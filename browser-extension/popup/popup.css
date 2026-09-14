@@ -1,0 +1,155 @@
+:root {
+  --black: #0A0E17;
+  --blue: #2F6FED;
+  --blue-deep: #1B3F91;
+  --blue-pale: #EAF0FD;
+  --gray: #7C879C;
+  --font-display: "Space Grotesk", -apple-system, sans-serif;
+  --font-body: "Inter", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+body {
+  font-family: var(--font-body);
+  width: 300px;
+  padding: 0;
+  margin: 0;
+  color: var(--black);
+  background: #fff;
+}
+
+header {
+  background: var(--black);
+  padding: 16px 18px;
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: #fff;
+}
+
+main {
+  padding: 16px 18px;
+}
+
+label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray);
+  margin-bottom: 6px;
+}
+
+#api-key-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px solid #D7DDEA;
+  box-sizing: border-box;
+}
+
+#api-key-input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+#save-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 9px 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+#save-btn:hover {
+  background: var(--blue-deep);
+}
+
+#status {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--gray);
+}
+
+#generate-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #EEF1F7;
+}
+
+#prompt-input, #result-output {
+  width: 100%;
+  padding: 8px 10px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  border: 1px solid #D7DDEA;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+#prompt-input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+#result-output {
+  margin-top: 10px;
+  background: var(--blue-pale);
+  color: var(--black);
+}
+
+#generate-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 9px 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+#generate-btn:hover {
+  background: var(--blue-deep);
+}
+
+#generate-btn:disabled {
+  background: var(--gray);
+  cursor: not-allowed;
+}
+
+#generate-status {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--gray);
+  min-height: 14px;
+}
+
+#copy-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 7px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: #fff;
+  color: var(--blue);
+  border: 1px solid var(--blue);
+  cursor: pointer;
+}
+
+#copy-btn:hover {
+  background: var(--blue-pale);
+}

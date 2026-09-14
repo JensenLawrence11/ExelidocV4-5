@@ -1,0 +1,20 @@
+{
+  "name": "exelidoc-office-addin",
+  "version": "1.0.0",
+  "description": "Exelidoc task pane add-in for Excel, Word, PowerPoint, and Outlook",
+  "scripts": {
+    "start": "office-addin-debugging start manifest.xml",
+    "start:excel": "office-addin-debugging start manifest.xml desktop --app excel",
+    "start:word": "office-addin-debugging start manifest.xml desktop --app word",
+    "start:powerpoint": "office-addin-debugging start manifest.xml desktop --app powerpoint",
+    "start:outlook": "office-addin-debugging start manifest-outlook.xml desktop --app outlook",
+    "stop": "office-addin-debugging stop manifest.xml",
+    "stop:outlook": "office-addin-debugging stop manifest-outlook.xml",
+    "validate": "office-addin-manifest validate manifest.xml",
+    "validate:outlook": "office-addin-manifest validate manifest-outlook.xml"
+  },
+  "devDependencies": {
+    "office-addin-debugging": "^5.1.0",
+    "office-addin-manifest": "^1.13.0"
+  }
+}

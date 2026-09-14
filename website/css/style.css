@@ -1,0 +1,397 @@
+:root {
+  --black: #0A0E17;
+  --black-soft: #12172A;
+  --blue: #2F6FED;
+  --blue-deep: #1B3F91;
+  --blue-pale: #EAF0FD;
+  --off-white: #F7F9FC;
+  --gray: #7C879C;
+  --gray-dark: #444B5A;
+
+  --font-display: "Space Grotesk", -apple-system, sans-serif;
+  --font-body: "Inter", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-body);
+  margin: 0;
+  color: var(--black);
+  line-height: 1.6;
+  background: var(--off-white);
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Nav ---------- */
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 32px;
+  background: var(--black);
+}
+
+.nav-logo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.nav-links a {
+  color: #B7C0D6;
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: 28px;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+  color: var(--blue);
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  text-align: center;
+  padding: 100px 20px 90px;
+  background: var(--black);
+  color: var(--off-white);
+}
+
+.hero .eyebrow {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--blue);
+  text-transform: uppercase;
+  margin-bottom: 18px;
+}
+
+.hero h1 {
+  font-size: 52px;
+  margin: 0 0 16px;
+}
+
+.hero p {
+  font-size: 18px;
+  color: #B7C0D6;
+  max-width: 480px;
+  margin: 0 auto 32px;
+}
+
+/* Signature element: recreates Excel's cell-selection frame (the border
+   plus small solid handle at the bottom-right corner) in the brand blue --
+   grounded in the product's flagship integration rather than a generic
+   decorative box. */
+.cell-frame {
+  position: relative;
+  display: inline-block;
+  border: 1.5px solid var(--blue);
+  padding: 28px 36px;
+}
+
+.cell-frame::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  background: var(--blue);
+}
+
+.btn {
+  display: inline-block;
+  padding: 13px 28px;
+  background: var(--blue);
+  color: var(--off-white);
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn:hover {
+  background: var(--blue-deep);
+}
+
+/* ---------- Features ---------- */
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1px;
+  max-width: 960px;
+  margin: 0 auto;
+  background: #DCE3F2;
+  border: 1px solid #DCE3F2;
+}
+
+.feature {
+  background: var(--off-white);
+  padding: 40px 32px;
+}
+
+.feature .tag {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--blue);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.feature h2 {
+  font-size: 19px;
+  margin: 0 0 10px;
+  color: var(--black);
+}
+
+.feature p {
+  color: var(--gray-dark);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* ---------- Pricing ---------- */
+
+.pricing {
+  text-align: center;
+  padding: 90px 20px;
+  background: var(--black);
+  color: var(--off-white);
+}
+
+.pricing h2 {
+  font-size: 28px;
+  margin: 0 0 12px;
+}
+
+.pricing > p {
+  color: #B7C0D6;
+  font-size: 15px;
+  margin-bottom: 28px;
+}
+
+#email-input {
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  border: 1px solid #2A3350;
+  background: var(--black-soft);
+  color: var(--off-white);
+  width: 280px;
+  max-width: 90%;
+}
+
+#email-input::placeholder {
+  color: var(--gray);
+}
+
+#subscribe-btn {
+  display: block;
+  margin: 16px auto 0;
+}
+
+.error {
+  color: #F26B6B;
+  font-size: 13px;
+  margin-top: 10px;
+  min-height: 16px;
+  font-family: var(--font-mono);
+}
+
+/* ---------- Success page ---------- */
+
+.hint {
+  font-size: 14px;
+  color: #8B95AC;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.key-box {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 14px 22px;
+  background: var(--black-soft);
+  border: 1px solid var(--blue);
+  color: var(--blue);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- Download page ---------- */
+
+.install-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  max-width: 900px;
+  margin: 60px auto;
+  padding: 0 20px;
+}
+
+.install-card {
+  border: 1px solid #DCE3F2;
+  padding: 32px;
+  background: #fff;
+}
+
+.install-card .tag {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--blue);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.install-card h2 {
+  font-size: 20px;
+  margin: 0 0 10px;
+}
+
+.install-card p {
+  color: var(--gray-dark);
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+
+.install-card .btn {
+  width: 100%;
+  text-align: center;
+}
+
+.install-card .note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--gray);
+  font-family: var(--font-mono);
+}
+
+/* ---------- Getting started steps ---------- */
+
+.steps {
+  max-width: 720px;
+  margin: 60px auto;
+  padding: 0 20px;
+}
+
+.step {
+  display: flex;
+  gap: 20px;
+  padding: 24px 0;
+  border-bottom: 1px solid #DCE3F2;
+}
+
+.step:last-child {
+  border-bottom: none;
+}
+
+.step-number {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--blue);
+  flex-shrink: 0;
+  width: 28px;
+}
+
+.step h3 {
+  font-size: 16px;
+  margin: 0 0 6px;
+}
+
+.step p {
+  font-size: 14px;
+  color: var(--gray-dark);
+  margin: 0;
+}
+
+.step code {
+  background: var(--blue-pale);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* ---------- Plain content pages (privacy, etc) ---------- */
+
+.content-page {
+  max-width: 720px;
+  margin: 60px auto;
+  padding: 0 20px 40px;
+}
+
+.content-page h2 {
+  font-size: 22px;
+  margin: 40px 0 12px;
+}
+
+.content-page h2:first-child {
+  margin-top: 0;
+}
+
+.content-page p, .content-page li {
+  font-size: 15px;
+  color: var(--gray-dark);
+}
+
+.page-hero {
+  text-align: center;
+  padding: 60px 20px 50px;
+  background: var(--black);
+  color: var(--off-white);
+}
+
+.page-hero h1 {
+  font-size: 36px;
+  margin: 0 0 12px;
+}
+
+.page-hero p {
+  color: #B7C0D6;
+  font-size: 16px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+footer {
+  text-align: center;
+  padding: 28px;
+  font-size: 12px;
+  color: var(--gray);
+  background: var(--off-white);
+  font-family: var(--font-mono);
+}
+
+footer a {
+  color: var(--gray);
+  text-decoration: none;
+}
+
+footer a:hover {
+  color: var(--blue);
+}

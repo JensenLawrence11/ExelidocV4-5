@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+  <title>Exelidoc</title>
+
+  <link rel="stylesheet" href="taskpane.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&family=Inter:wght@400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Exelidoc</h1>
+      <p class="subtitle">Starting...</p>
+    </header>
+
+    <main>
+      <div id="settings">
+        <label for="api-key-input">API key</label>
+        <input type="text" id="api-key-input" placeholder="Paste your key from the success page" />
+        <button id="save-key-btn">Save</button>
+      </div>
+
+      <div id="status-indicator">
+        <span id="status-dot"></span>
+        <p id="status">Starting...</p>
+      </div>
+      <p class="hint" id="hint">
+        Exelidoc checks your work automatically as you go -- this pane
+        doesn't need to stay open. You can close it and it keeps running.
+      </p>
+      <div id="results"></div>
+    </main>
+  </div>
+
+  <script type="text/javascript" src="taskpane.js"></script>
+</body>
+</html>

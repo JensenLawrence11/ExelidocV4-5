@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>You're subscribed — Exelidoc</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="hero" style="padding-bottom: 100px;">
+    <span class="eyebrow">Subscription confirmed</span>
+    <h1>You're in.</h1>
+    <p id="message">Loading your API key...</p>
+    <p class="hint">
+      Paste this key into the Exelidoc extension's popup or the Excel task pane's
+      settings. It's how Exelidoc knows you're subscribed — keep it private.
+    </p>
+    <code id="api-key" class="key-box"></code>
+  </header>
+
+  <script>
+    const BACKEND_URL = "http://localhost:5000"; // TODO: prod URL
+
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    const freeKey = params.get("free_key");
+    const freeEmail = params.get("email");
+    const messageEl = document.getElementById("message");
+    const keyEl = document.getElementById("api-key");
+
+    if (freeKey) {
+      // Free tier -- no Stripe involved, key was passed straight from signup-free.
+      messageEl.textContent = `Signed up as ${freeEmail} (Free plan).`;
+      keyEl.textContent = freeKey;
+    } else if (sessionId) {
+      fetch(`${BACKEND_URL}/api/auth/key-for-session?session_id=${encodeURIComponent(sessionId)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.api_key) {
+            messageEl.textContent = `Subscribed as ${data.email} (${data.tier} plan).`;
+            keyEl.textContent = data.api_key;
+          } else {
+            messageEl.textContent = data.error || "Could not load your key.";
+          }
+        })
+        .catch(() => {
+          messageEl.textContent = "Could not reach the server.";
+        });
+    } else {
+      messageEl.textContent = "Missing session information.";
+    }
+  </script>
+</body>
+</html>

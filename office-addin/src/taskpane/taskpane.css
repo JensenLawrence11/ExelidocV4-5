@@ -1,0 +1,127 @@
+:root {
+  --black: #0A0E17;
+  --blue: #2F6FED;
+  --blue-deep: #1B3F91;
+  --blue-pale: #EAF0FD;
+  --gray: #7C879C;
+  --gray-dark: #444B5A;
+  --font-display: "Space Grotesk", -apple-system, sans-serif;
+  --font-body: "Inter", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+body {
+  font-family: var(--font-body);
+  margin: 0;
+  padding: 0;
+  color: var(--black);
+  background: #fff;
+}
+
+header {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #EEF1F7;
+}
+
+header h1 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.subtitle {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray);
+  margin: 4px 0 0;
+}
+
+main {
+  padding: 18px 20px;
+}
+
+#settings {
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #EEF1F7;
+}
+
+#settings label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray);
+  margin-bottom: 6px;
+}
+
+#api-key-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px solid #D7DDEA;
+  box-sizing: border-box;
+}
+
+#api-key-input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+#save-key-btn {
+  margin-top: 8px;
+  padding: 7px 16px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+#save-key-btn:hover {
+  background: var(--blue-deep);
+}
+
+#status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+}
+
+#status {
+  font-size: 13px;
+  color: var(--gray-dark);
+  margin: 0;
+}
+
+.hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--gray);
+  line-height: 1.5;
+}
+
+#results {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--blue-pale);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--black);
+}

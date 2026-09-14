@@ -1,0 +1,30 @@
+# Environment variables / secrets
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Node / office-addin / browser-extension tooling
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+
+# Office Add-in certs
+office-addin/certs/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

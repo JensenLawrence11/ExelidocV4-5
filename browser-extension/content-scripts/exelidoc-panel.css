@@ -1,0 +1,100 @@
+/* Exelidoc suggestion panel — injected into Gmail and Google Docs via manifest.json */
+
+.exelidoc-panel {
+  position: absolute;
+  width: 280px;
+  display: none; /* flipped to flex in JS via setActiveBox */
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  padding: 14px;
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #202124;
+  z-index: 9999;
+  box-sizing: border-box;
+}
+
+.exelidoc-panel.docs-mode {
+  position: fixed;
+  top: 72px;
+  right: 22px;
+  left: auto;
+  width: 310px;
+  max-width: calc(100vw - 28px);
+  max-height: calc(100vh - 92px);
+  overflow: hidden;
+}
+
+.exelidoc-panel * {
+  box-sizing: border-box;
+}
+
+.exelidoc-panel-header {
+  font-weight: 600;
+  font-size: 14px;
+  color: #202124;
+}
+
+.exelidoc-query {
+  width: 100%;
+  resize: vertical;
+  min-height: 56px;
+  font: inherit;
+  padding: 8px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  outline: none;
+}
+
+.exelidoc-query:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 1px #1a73e8;
+}
+
+.exelidoc-submit {
+  align-self: flex-start;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #1a73e8;
+  color: #fff;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.exelidoc-submit:hover {
+  background: #1765cc;
+}
+
+.exelidoc-submit:disabled {
+  background: #a8c7fa;
+  cursor: default;
+}
+
+.exelidoc-undo {
+  align-self: flex-start;
+  margin-right: 6px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #dadce0;
+  background: #f8f9fa;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.exelidoc-undo:hover {
+  background: #f1f3f4;
+}
+
+.exelidoc-status {
+  color: #5f6368;
+  font-size: 12px;
+  min-height: 14px;
+}

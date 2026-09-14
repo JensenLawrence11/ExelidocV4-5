@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Exelidoc</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&family=Inter:wght@400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <h1>Exelidoc</h1>
+  </header>
+  <main>
+    <section id="settings-section">
+      <label for="api-key-input">API key</label>
+      <input type="text" id="api-key-input" placeholder="Paste your key" />
+      <button id="save-btn">Save</button>
+      <p id="status">Active on Gmail and Google Docs.</p>
+    </section>
+
+    <section id="generate-section">
+      <label for="prompt-input">Generate text</label>
+      <textarea id="prompt-input" rows="3" placeholder="e.g. a short email asking to reschedule Thursday's meeting"></textarea>
+      <button id="generate-btn">Generate</button>
+      <p id="generate-status"></p>
+      <textarea id="result-output" rows="6" readonly placeholder="Generated text will appear here"></textarea>
+      <button id="copy-btn" style="display:none;">Copy to clipboard</button>
+    </section>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
