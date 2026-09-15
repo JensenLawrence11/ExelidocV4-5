@@ -1,7 +1,7 @@
 // Service worker: handles anything that shouldn't live in the content script
 // (keeps the API key and backend URL out of every content script).
 
-const BACKEND_URL = "http://localhost:5000"; // TODO: swap to prod URL when deployed
+const BACKEND_URL = "https://exelidocv4-5.onrender.com"; // TODO: swap to prod URL when deployed
 
 // TEMPORARY: single shared key for testing/personal use, so you don't have
 // to paste it into the popup every time. Paste your actual key from Supabase

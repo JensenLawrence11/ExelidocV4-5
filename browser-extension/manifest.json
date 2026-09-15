@@ -17,8 +17,7 @@
   },
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
-    "http://localhost:5000/*",
-    "https://your-backend-domain.com/*"
+    "https://exelidocv4-5.onrender.com/*"
   ],
   "content_scripts": [
     {
