@@ -15,7 +15,6 @@
 function setConfig() {
   const props = PropertiesService.getScriptProperties();
   props.setProperty('EXELIDOC_BACKEND_URL', 'https://exelidocv4-5.onrender.com');
-  props.setProperty('EXELIDOC_API_KEY', 'OPENROUTER_API_KEY');
 }
 
 function onHomepage(e) {
@@ -23,7 +22,65 @@ function onHomepage(e) {
     .setHeader(CardService.newCardHeader().setTitle('Exelidoc'))
     .addSection(
       CardService.newCardSection()
-        .addWidget(CardService.newTextParagraph().setText('Exelidoc is installed.'))
+        .addWidget(
+          CardService.newTextInput()
+            .setFieldName('instruction')
+            .setTitle('What should Exelidoc do?')
+            .setHint('Rewrite this, fix grammar, or write something new')
+        )
+        .addWidget(
+          CardService.newButtonSet().addButton(
+            CardService.newTextButton()
+              .setText('Ask Exelidoc')
+              .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+              .setOnClickAction(
+                CardService.newAction().setFunctionName('runInstructionAction')
+              )
+          )
+        )
+        .addWidget(
+          CardService.newTextParagraph().setText(
+            'Select text to edit it, or leave the document empty to generate text.'
+          )
+        )
+    )
+    .build();
+}
+
+function runInstructionAction(e) {
+  const instruction = ((e && e.commonEventObject && e.commonEventObject.formInputs)
+    ? e.commonEventObject.formInputs.instruction
+    : null);
+  const value = instruction && instruction.stringInputs && instruction.stringInputs.value
+    ? instruction.stringInputs.value[0]
+    : '';
+
+  if (!value || !value.trim()) {
+    return buildResultCard('Enter an instruction first.');
+  }
+
+  try {
+    const result = runInstruction(value.trim());
+    if (result && result.error) {
+      return buildResultCard(`Error: ${result.error}`);
+    }
+    return buildResultCard('Done. Your document was updated.');
+  } catch (error) {
+    return buildResultCard(`Error: ${error.message || error}`);
+  }
+}
+
+function buildResultCard(message) {
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('Exelidoc'))
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph().setText(message))
+        .addWidget(
+          CardService.newTextButton()
+            .setText('Try again')
+            .setOnClickAction(CardService.newAction().setFunctionName('onHomepage'))
+        )
     )
     .build();
 }
@@ -64,8 +121,8 @@ function callBackend(path, payload) {
   const apiKey = props.getProperty('EXELIDOC_API_KEY');
   const backendUrl = props.getProperty('EXELIDOC_BACKEND_URL');
 
-  if (!backendUrl || !apiKey) {
-    throw new Error('Run setConfig() first (see top of Code.gs)');
+  if (!backendUrl || !apiKey || apiKey === 'OPENROUTER_API_KEY') {
+    throw new Error('Set EXELIDOC_API_KEY in Apps Script Script Properties first');
   }
 
   const response = UrlFetchApp.fetch(`${backendUrl}${path}`, {
@@ -77,10 +134,19 @@ function callBackend(path, payload) {
   });
 
   const code = response.getResponseCode();
-  const body = JSON.parse(response.getContentText());
+  let body = {};
+  const responseText = response.getContentText();
+  if (responseText) {
+    try {
+      body = JSON.parse(responseText);
+    } catch (error) {
+      body = { error: responseText };
+    }
+  }
 
   if (code === 401) throw new Error('invalid_api_key');
   if (code === 402) throw new Error('subscription_inactive');
+  if (code === 429) throw new Error(body.error || 'monthly_limit_reached');
   if (code >= 400) throw new Error(body.error || 'request_failed');
 
   return body;
