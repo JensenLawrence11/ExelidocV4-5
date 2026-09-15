@@ -23,6 +23,8 @@ def generate_text_route():
     """
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "")
+    if not isinstance(prompt, str):
+        return jsonify(error="Prompt must be text"), 400
     if not prompt.strip():
         return jsonify(error="No prompt provided"), 400
 
@@ -48,6 +50,8 @@ def analyze_text_route():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "")
     instruction = data.get("instruction") or ""
+    if not isinstance(text, str) or not isinstance(instruction, str):
+        return jsonify(error="Text and instruction must be text"), 400
     print(f"DEBUG instruction received: {instruction!r}")
     if not text.strip() and not instruction.strip():
         return jsonify(error="No text provided"), 400
@@ -75,6 +79,8 @@ def analyze_range_route():
     values = data.get("values")
     if not values:
         return jsonify(error="No range values provided"), 400
+    if not isinstance(values, list) or any(not isinstance(row, list) for row in values):
+        return jsonify(error="Range values must be a 2D array"), 400
 
     result = analyze_spreadsheet_range(values)
     try:

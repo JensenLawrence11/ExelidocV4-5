@@ -65,7 +65,7 @@ Create or edit `backend/.env` with the required API keys. Do not commit it.
 From the `backend` directory, with the virtual environment active:
 
 ```bash
-python -m gunicorn --bind 0.0.0.0:5000 --workers 2 app:app
+python -m gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 2 app:app
 ```
 
 Check it from Windows at <http://127.0.0.1:5000/api/health>. Stop Gunicorn with

@@ -32,6 +32,7 @@ def _call_openrouter(system_prompt: str, user_content: str) -> str | None:
         json={
             "model": Config.OPENROUTER_MODEL,
             "temperature": 0,
+            "max_tokens": Config.AI_MAX_OUTPUT_TOKENS,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
@@ -73,6 +74,9 @@ TEXT_SYSTEM_PROMPT = (
 
 def analyze_text(text: str, instruction: str | None = None) -> dict:
     try:
+        if len(text) > Config.AI_MAX_TEXT_CHARS or len(instruction or "") > Config.AI_MAX_TEXT_CHARS:
+            return {"corrected": text, "suggestions": [], "error": "Text is too large to analyze"}
+
         if not text or not text.strip():
             if not instruction or not instruction.strip():
                 return {"corrected": "", "suggestions": []}
@@ -118,6 +122,9 @@ GENERATE_SYSTEM_PROMPT = (
 
 def generate_text(prompt: str) -> dict:
     try:
+        if len(prompt) > Config.AI_MAX_TEXT_CHARS:
+            return {"generated": "", "error": "Prompt is too large to process"}
+
         raw = _call_openrouter(GENERATE_SYSTEM_PROMPT, prompt)
         if raw is None:
             return {"generated": "", "error": "AI provider not configured"}
@@ -154,6 +161,10 @@ def _is_formula_or_number(cell) -> bool:
 
 
 def analyze_spreadsheet_range(values: list) -> dict:
+    cell_count = sum(len(row) for row in values if isinstance(row, list))
+    if cell_count > Config.AI_MAX_RANGE_CELLS:
+        return {"correctedValues": values, "notes": [], "error": "Selected range is too large to analyze"}
+
     positions = []
     editable_cells = []
     for r, row in enumerate(values):

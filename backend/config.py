@@ -14,6 +14,10 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 class Config:
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev-only-insecure-key")
     ENV = os.environ.get("FLASK_ENV", "development")
+    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", 1_000_000))
+    AI_MAX_TEXT_CHARS = int(os.environ.get("AI_MAX_TEXT_CHARS", 100_000))
+    AI_MAX_RANGE_CELLS = int(os.environ.get("AI_MAX_RANGE_CELLS", 5_000))
+    AI_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_MAX_OUTPUT_TOKENS", 4_000))
 
     FRONTEND_ORIGINS = os.environ.get("FRONTEND_ORIGINS", "*").split(",")
 
