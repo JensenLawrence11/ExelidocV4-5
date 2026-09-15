@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: 'Google Sans', Roboto, Arial, sans-serif;
+        font-size: 13px;
+        padding: 12px;
+        color: #202124;
+      }
+      textarea {
+        width: 100%;
+        min-height: 70px;
+        box-sizing: border-box;
+        padding: 8px;
+        border: 1px solid #dadce0;
+        border-radius: 6px;
+        font: inherit;
+        resize: vertical;
+      }
+      textarea:focus {
+        outline: none;
+        border-color: #1a73e8;
+        box-shadow: 0 0 0 1px #1a73e8;
+      }
+      button {
+        margin-top: 8px;
+        padding: 6px 16px;
+        border: none;
+        border-radius: 4px;
+        background: #1a73e8;
+        color: #fff;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1765cc;
+      }
+      button:disabled {
+        background: #a8c7fa;
+        cursor: default;
+      }
+      #status {
+        margin-top: 10px;
+        color: #5f6368;
+        font-size: 12px;
+        min-height: 14px;
+      }
+      #hint {
+        margin-top: 4px;
+        color: #5f6368;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <textarea id="instruction" placeholder="e.g. make this more formal, fix grammar... or write something new if nothing is selected"></textarea>
+    <div id="hint">Select text to edit it, or leave nothing selected to generate new text.</div>
+    <button id="ask">Ask</button>
+    <div id="status"></div>
+
+    <script>
+      const askBtn = document.getElementById('ask');
+      const status = document.getElementById('status');
+      const instructionEl = document.getElementById('instruction');
+
+      askBtn.addEventListener('click', () => {
+        const instruction = instructionEl.value.trim();
+        if (!instruction) return;
+
+        askBtn.disabled = true;
+        status.textContent = 'Thinking...';
+
+        google.script.run
+          .withSuccessHandler(() => {
+            askBtn.disabled = false;
+            status.textContent = 'Done. Use Ctrl+Z / Cmd+Z to undo.';
+          })
+          .withFailureHandler((err) => {
+            askBtn.disabled = false;
+            status.textContent = 'Error: ' + err.message;
+          })
+          .runInstruction(instruction);
+      });
+    </script>
+  </body>
+</html>
