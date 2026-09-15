@@ -1,46 +1,42 @@
-/* global Office, Excel, Word, PowerPoint, document, localStorage, setInterval, clearInterval */
+/* global Office, Excel, Word, PowerPoint, document, localStorage */
 
-// TODO: point this at your deployed Flask backend once it's hosted.
-const BACKEND_URL = "http://localhost:5000";
+const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 const API_KEY_STORAGE_KEY = "exelidoc_api_key";
+const DEFAULT_API_KEY = ""; // leave blank unless you intentionally want a shared fallback key
 
-// TEMPORARY: single shared key for testing/personal use. Paste your actual
-// key from Supabase below. Same caveat as background.js -- swap back to
-// per-user keys before giving this to real paying users.
-const DEFAULT_API_KEY = "paste-your-key-here";
-const DEBOUNCE_MS = 1500;
-const OUTLOOK_POLL_MS = 4000;
-
-let debounceTimer = null;
-let isApplyingCorrection = false; // guards against a write re-triggering its own change event
-let lastCheckedText = "";         // skip redundant backend calls when nothing actually changed
+let currentHost = null;
+let preEditSnapshot = null; // { kind: "word" | "powerpoint", data: ... } -- used by Undo
 
 Office.onReady((info) => {
+  currentHost = info.host;
   setupSettingsUI();
+
   const subtitle = document.querySelector(".subtitle");
-  const hint = document.getElementById("hint");
+  const textMode = document.getElementById("text-mode");
+  const rangeMode = document.getElementById("range-mode");
 
   switch (info.host) {
     case Office.HostType.Excel:
       subtitle.textContent = "AI assistant for Excel";
-      registerExcelHandlers();
+      textMode.hidden = true;
+      rangeMode.hidden = false;
+      document.getElementById("clean").addEventListener("click", onCleanRangeClicked);
       break;
     case Office.HostType.Word:
       subtitle.textContent = "AI assistant for Word";
-      registerWordHandlers();
+      document.getElementById("ask").addEventListener("click", onAskClicked);
       break;
     case Office.HostType.PowerPoint:
       subtitle.textContent = "AI assistant for PowerPoint";
-      registerPowerPointHandlers();
-      break;
-    case Office.HostType.Outlook:
-      subtitle.textContent = "AI assistant for Outlook";
-      hint.textContent = "Exelidoc checks your email as you compose. Unlike the other apps, this pane needs to stay open to keep checking.";
-      registerOutlookHandlers();
+      document.getElementById("ask").addEventListener("click", onAskClicked);
       break;
     default:
-      document.getElementById("status").textContent = "Unsupported host.";
+      setStatus("Unsupported host.");
+      textMode.hidden = true;
+      rangeMode.hidden = true;
   }
+
+  document.getElementById("undo").addEventListener("click", onUndoClicked);
 });
 
 function setupSettingsUI() {
@@ -48,7 +44,7 @@ function setupSettingsUI() {
   input.value = localStorage.getItem(API_KEY_STORAGE_KEY) || "";
   document.getElementById("save-key-btn").addEventListener("click", () => {
     localStorage.setItem(API_KEY_STORAGE_KEY, input.value.trim());
-    document.getElementById("status").textContent = "Key saved. Active -- watching for changes.";
+    setStatus("Key saved.");
   });
 }
 
@@ -62,264 +58,244 @@ function setStatus(text) {
   document.getElementById("status").textContent = text;
 }
 
-/**
- * Shared backend call for free text (Word, PowerPoint, Outlook). Excel has
- * its own analyze-range call further down since it deals with a 2D grid.
- */
-async function callAnalyzeText(text) {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    setStatus("No API key set -- paste your key above.");
-    return null;
-  }
-
-  const response = await fetch(`${BACKEND_URL}/api/ai/analyze-text`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
-    body: JSON.stringify({ text }),
-  });
-
-  if (response.status === 401) {
-    setStatus("Invalid API key -- check the key above.");
-    return null;
-  }
-  if (response.status === 402) {
-    setStatus("Subscription not active.");
-    return null;
-  }
-  if (!response.ok) throw new Error(`Backend returned ${response.status}`);
-
-  return response.json();
-}
-
-// ---------------------------------------------------------------------------
-// Excel -- worksheets.onChanged fires on every cell edit, no polling needed.
-// ---------------------------------------------------------------------------
-
-async function registerExcelHandlers() {
-  try {
-    await Excel.run(async (context) => {
-      context.workbook.worksheets.onChanged.add(onExcelChanged);
-      await context.sync();
-    });
-    setStatus("Active -- watching for changes.");
-  } catch (error) {
-    setStatus("Error starting background monitor -- see console.");
-    console.error(error);
-  }
-}
-
-function onExcelChanged(event) {
-  if (isApplyingCorrection) return;
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => analyzeExcelRange(event.address, event.worksheetId), DEBOUNCE_MS);
-}
-
-async function analyzeExcelRange(address, worksheetId) {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    setStatus("No API key set -- paste your key above.");
+function setNotes(notes) {
+  const notesEl = document.getElementById("notes");
+  if (!notes || !notes.length) {
+    notesEl.innerHTML = "";
     return;
   }
+  notesEl.innerHTML =
+    "<strong>Changes made:</strong><ul>" +
+    notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("") +
+    "</ul>";
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callBackend(path, payload) {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("No API key set -- paste your key above.");
+
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
+    body: JSON.stringify(payload),
+  });
+
+  if (res.status === 401) throw new Error("invalid_api_key");
+  if (res.status === 402) throw new Error("subscription_inactive");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `request_failed (${res.status})`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Word + PowerPoint -- shared Ask button handler. Each host implements its
+// own read/write pair below; this function just orchestrates them.
+// ---------------------------------------------------------------------------
+
+async function onAskClicked() {
+  const askBtn = document.getElementById("ask");
+  const instruction = document.getElementById("instruction").value.trim();
+  if (!instruction) return;
+
+  askBtn.disabled = true;
+  setStatus("Thinking...");
+  setNotes(null);
+
+  try {
+    const existingText =
+      currentHost === Office.HostType.Word
+        ? await wordGetSelectedOrBodyText()
+        : await powerPointGetSelectedText();
+
+    let result;
+    if (existingText.trim()) {
+      result = await callBackend("/api/ai/analyze-text", { text: existingText, instruction });
+      if (!result.corrected || result.corrected === existingText) {
+        setStatus("No changes suggested.");
+        return;
+      }
+      if (currentHost === Office.HostType.Word) {
+        preEditSnapshot = { kind: "word", text: existingText };
+        await wordApplyToSelectionOrBody(result.corrected);
+      } else {
+        preEditSnapshot = { kind: "powerpoint", text: existingText };
+        await powerPointSetSelectedText(result.corrected);
+      }
+    } else {
+      result = await callBackend("/api/ai/generate-text", { prompt: instruction });
+      preEditSnapshot = null; // nothing to undo back to -- there was no prior text
+      if (currentHost === Office.HostType.Word) {
+        await wordInsertAtCursor(result.generated);
+      } else {
+        await powerPointSetSelectedText(result.generated);
+      }
+    }
+
+    document.getElementById("undo").hidden = !preEditSnapshot;
+    setStatus("Done. Use Ctrl+Z / Cmd+Z to undo, or the Undo button below.");
+  } catch (err) {
+    setStatus(`Error: ${err.message}`);
+  } finally {
+    askBtn.disabled = false;
+  }
+}
+
+async function onUndoClicked() {
+  if (!preEditSnapshot) return;
+
+  try {
+    if (preEditSnapshot.kind === "word") {
+      await wordApplyToSelectionOrBody(preEditSnapshot.text);
+    } else if (preEditSnapshot.kind === "powerpoint") {
+      await powerPointSetSelectedText(preEditSnapshot.text);
+    } else if (preEditSnapshot.kind === "excel") {
+      await Excel.run(async (context) => {
+        const range = context.workbook.getSelectedRange();
+        range.values = preEditSnapshot.values;
+        await context.sync();
+      });
+    }
+    setStatus("Restored previous text.");
+  } catch (err) {
+    setStatus(`Undo failed: ${err.message}`);
+  } finally {
+    preEditSnapshot = null;
+    document.getElementById("undo").hidden = true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Word
+// ---------------------------------------------------------------------------
+
+function wordGetSelectedOrBodyText() {
+  return Word.run(async (context) => {
+    const selection = context.document.getSelection();
+    selection.load("text");
+    await context.sync();
+    if (selection.text && selection.text.trim()) return selection.text;
+
+    const body = context.document.body;
+    body.load("text");
+    await context.sync();
+    return body.text;
+  });
+}
+
+// Re-reads the CURRENT selection at write time rather than reusing a range
+// object captured earlier -- if it's non-empty, replace it; otherwise this
+// was a whole-body operation, so replace the whole body instead. This
+// keeps the edit anchored to the same place the text actually came from.
+function wordApplyToSelectionOrBody(newText) {
+  return Word.run(async (context) => {
+    const selection = context.document.getSelection();
+    selection.load("text");
+    await context.sync();
+
+    if (selection.text && selection.text.trim()) {
+      selection.insertText(newText, Word.InsertLocation.replace);
+    } else {
+      const body = context.document.body;
+      body.clear();
+      body.insertText(newText, Word.InsertLocation.start);
+    }
+    await context.sync();
+  });
+}
+
+function wordInsertAtCursor(text) {
+  return Word.run(async (context) => {
+    context.document.getSelection().insertText(text, Word.InsertLocation.replace);
+    await context.sync();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// PowerPoint -- uses the older common Office.context.document API (Office.js
+// doesn't have a dedicated PowerPoint.run text API the way Word/Excel do).
+// ---------------------------------------------------------------------------
+
+function powerPointGetSelectedText() {
+  return new Promise((resolve, reject) => {
+    Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, (result) => {
+      if (result.status === Office.AsyncResultStatus.Failed) {
+        reject(new Error(result.error.message));
+        return;
+      }
+      resolve(result.value || "");
+    });
+  });
+}
+
+function powerPointSetSelectedText(text) {
+  return new Promise((resolve, reject) => {
+    Office.context.document.setSelectedDataAsync(
+      text,
+      { coercionType: Office.CoercionType.Text },
+      (result) => {
+        if (result.status === Office.AsyncResultStatus.Failed) {
+          reject(new Error(result.error.message));
+          return;
+        }
+        resolve();
+      }
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Excel -- single "Clean Up" button, no instruction (backend doesn't accept
+// one for ranges yet -- see analyze_spreadsheet_range in ai_service.py).
+// ---------------------------------------------------------------------------
+
+async function onCleanRangeClicked() {
+  const cleanBtn = document.getElementById("clean");
+  cleanBtn.disabled = true;
+  setStatus("Reading selection...");
+  setNotes(null);
 
   try {
     const values = await Excel.run(async (context) => {
-      const sheet = worksheetId
-        ? context.workbook.worksheets.getItem(worksheetId)
-        : context.workbook.worksheets.getActiveWorksheet();
-      const range = sheet.getRange(address);
+      const range = context.workbook.getSelectedRange();
       range.load("values");
       await context.sync();
       return range.values;
     });
 
-    setStatus("Checking...");
-    const response = await fetch(`${BACKEND_URL}/api/ai/analyze-range`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
-      body: JSON.stringify({ values }),
-    });
+    if (!values || values.length === 0) {
+      setStatus("No range selected.");
+      return;
+    }
 
-    if (response.status === 401) return setStatus("Invalid API key -- check the key above.");
-    if (response.status === 402) return setStatus("Subscription not active.");
-    if (!response.ok) throw new Error(`Backend returned ${response.status}`);
+    setStatus("Thinking...");
+    const result = await callBackend("/api/ai/analyze-range", { values });
 
-    const data = await response.json();
+    if (!result.correctedValues) {
+      setStatus("No changes suggested.");
+      return;
+    }
 
-    isApplyingCorrection = true;
+    preEditSnapshot = { kind: "excel", values };
     await Excel.run(async (context) => {
-      const sheet = worksheetId
-        ? context.workbook.worksheets.getItem(worksheetId)
-        : context.workbook.worksheets.getActiveWorksheet();
-      const range = sheet.getRange(address);
-      range.values = data.correctedValues;
+      const range = context.workbook.getSelectedRange();
+      range.values = result.correctedValues;
       await context.sync();
     });
 
-    setStatus("Active -- watching for changes.");
-  } catch (error) {
-    setStatus("Active -- last check failed, see console.");
-    console.error(error);
+    document.getElementById("undo").hidden = false;
+    setStatus("Done. Use Ctrl+Z / Cmd+Z to undo, or the Undo button below.");
+    setNotes(result.notes);
+  } catch (err) {
+    setStatus(`Error: ${err.message}`);
   } finally {
-    isApplyingCorrection = false;
+    cleanBtn.disabled = false;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Word -- no reliable "text changed" event exists across Word API versions,
-// so this uses the cross-host common API's DocumentSelectionChanged event
-// (fires when the cursor moves to a new paragraph/selection) and checks the
-// current selection's text at that point. Good enough for "checks as you
-// move through the document"; it won't catch edits mid-paragraph until you
-// click elsewhere.
-// ---------------------------------------------------------------------------
-
-function registerWordHandlers() {
-  Office.context.document.addHandlerAsync(
-    Office.EventType.DocumentSelectionChanged,
-    () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(analyzeWordSelection, DEBOUNCE_MS);
-    },
-    (result) => {
-      if (result.status === Office.AsyncResultStatus.Failed) {
-        setStatus("Error starting background monitor -- see console.");
-        console.error(result.error);
-        return;
-      }
-      setStatus("Active -- watching for changes.");
-    }
-  );
-}
-
-async function analyzeWordSelection() {
-  if (isApplyingCorrection) return;
-
-  Word.run(async (context) => {
-    const range = context.document.getSelection();
-    range.load("text");
-    await context.sync();
-
-    const text = range.text.trim();
-    if (!text || text === lastCheckedText) return;
-    lastCheckedText = text;
-
-    setStatus("Checking...");
-    try {
-      const data = await callAnalyzeText(text);
-      if (!data) return;
-
-      if (data.corrected && data.corrected !== text) {
-        isApplyingCorrection = true;
-        range.insertText(data.corrected, Word.InsertLocation.replace);
-        await context.sync();
-      }
-      setStatus("Active -- watching for changes.");
-    } catch (error) {
-      setStatus("Active -- last check failed, see console.");
-      console.error(error);
-    } finally {
-      isApplyingCorrection = false;
-    }
-  }).catch((error) => console.error(error));
-}
-
-// ---------------------------------------------------------------------------
-// PowerPoint -- same DocumentSelectionChanged event, reading/writing the
-// selected text box contents via the common API's text coercion.
-// ---------------------------------------------------------------------------
-
-function registerPowerPointHandlers() {
-  Office.context.document.addHandlerAsync(
-    Office.EventType.DocumentSelectionChanged,
-    () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(analyzePowerPointSelection, DEBOUNCE_MS);
-    },
-    (result) => {
-      if (result.status === Office.AsyncResultStatus.Failed) {
-        setStatus("Error starting background monitor -- see console.");
-        console.error(result.error);
-        return;
-      }
-      setStatus("Active -- watching for changes.");
-    }
-  );
-}
-
-function analyzePowerPointSelection() {
-  if (isApplyingCorrection) return;
-
-  Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, async (result) => {
-    if (result.status === Office.AsyncResultStatus.Failed) return;
-
-    const text = (result.value || "").trim();
-    if (!text || text === lastCheckedText) return;
-    lastCheckedText = text;
-
-    setStatus("Checking...");
-    try {
-      const data = await callAnalyzeText(text);
-      if (!data) return;
-
-      if (data.corrected && data.corrected !== text) {
-        isApplyingCorrection = true;
-        Office.context.document.setSelectedDataAsync(data.corrected, { coercionType: Office.CoercionType.Text }, () => {
-          isApplyingCorrection = false;
-        });
-      }
-      setStatus("Active -- watching for changes.");
-    } catch (error) {
-      setStatus("Active -- last check failed, see console.");
-      console.error(error);
-      isApplyingCorrection = false;
-    }
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Outlook -- there is no native "compose body changed" event, so this polls
-// on an interval instead of reacting to an event. Known limitation: this
-// only runs while the compose task pane is open (Outlook's ItemEdit form
-// doesn't support the shared-runtime background pattern used above), so it
-// isn't truly "background" the way the Excel/Word/PowerPoint version is.
-// ---------------------------------------------------------------------------
-
-function registerOutlookHandlers() {
-  setStatus("Active -- watching for changes.");
-  setInterval(pollOutlookBody, OUTLOOK_POLL_MS);
-}
-
-function pollOutlookBody() {
-  if (isApplyingCorrection) return;
-
-  Office.context.mailbox.item.body.getAsync(Office.CoercionType.Text, async (result) => {
-    if (result.status === Office.AsyncResultStatus.Failed) return;
-
-    const text = (result.value || "").trim();
-    if (!text || text === lastCheckedText) return;
-    lastCheckedText = text;
-
-    setStatus("Checking...");
-    try {
-      const data = await callAnalyzeText(text);
-      if (!data) return;
-
-      if (data.corrected && data.corrected !== text) {
-        isApplyingCorrection = true;
-        Office.context.mailbox.item.body.setAsync(
-          data.corrected,
-          { coercionType: Office.CoercionType.Text },
-          () => {
-            isApplyingCorrection = false;
-          }
-        );
-      }
-      setStatus("Active -- watching for changes.");
-    } catch (error) {
-      setStatus("Active -- last check failed, see console.");
-      console.error(error);
-      isApplyingCorrection = false;
-    }
-  });
 }

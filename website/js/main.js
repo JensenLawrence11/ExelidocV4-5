@@ -1,5 +1,5 @@
 // TODO: point this at your deployed Flask backend once it's hosted.
-const BACKEND_URL = "http://localhost:5000";
+const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 
 async function handleFreeSignup(email, errorEl) {
   const response = await fetch(`${BACKEND_URL}/api/auth/signup-free`, {

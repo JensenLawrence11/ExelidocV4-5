@@ -1,40 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
   <title>Exelidoc</title>
-
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <link rel="stylesheet" href="taskpane.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&family=Inter:wght@400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 </head>
 <body>
-  <div id="app">
-    <header>
-      <h1>Exelidoc</h1>
-      <p class="subtitle">Starting...</p>
-    </header>
+  <div class="exelidoc-panel">
+    <div class="exelidoc-header">Exelidoc</div>
+    <div class="subtitle"></div>
 
-    <main>
-      <div id="settings">
-        <label for="api-key-input">API key</label>
-        <input type="text" id="api-key-input" placeholder="Paste your key from the success page" />
-        <button id="save-key-btn">Save</button>
-      </div>
+    <div id="settings">
+      <label for="api-key-input">API key</label>
+      <input type="password" id="api-key-input" placeholder="Paste your Exelidoc key" />
+      <button id="save-key-btn">Save</button>
+    </div>
 
-      <div id="status-indicator">
-        <span id="status-dot"></span>
-        <p id="status">Starting...</p>
-      </div>
-      <p class="hint" id="hint">
-        Exelidoc checks your work automatically as you go -- this pane
-        doesn't need to stay open. You can close it and it keeps running.
-      </p>
-      <div id="results"></div>
-    </main>
+    <div id="text-mode">
+      <textarea id="instruction" placeholder="e.g. make this more formal, fix grammar... or write something new if nothing is selected"></textarea>
+      <div id="hint" class="exelidoc-hint">Select text to edit it, or leave nothing selected to generate new text.</div>
+      <button id="ask">Ask</button>
+    </div>
+
+    <div id="range-mode" hidden>
+      <div class="exelidoc-hint">Select a range of cells, then click Clean Up. Formulas and numbers are left untouched -- only text cells get corrected.</div>
+      <button id="clean">Clean Up Selected Range</button>
+    </div>
+
+    <button id="undo" hidden>Undo</button>
+    <div id="status"></div>
+    <div id="notes"></div>
   </div>
-
-  <script type="text/javascript" src="taskpane.js"></script>
+  <script src="taskpane.js"></script>
 </body>
 </html>
