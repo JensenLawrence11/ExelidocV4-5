@@ -15,7 +15,7 @@
 function setConfig() {
   const props = PropertiesService.getScriptProperties();
   props.setProperty('EXELIDOC_BACKEND_URL', 'https://exelidocv4-5.onrender.com');
-  props.setProperty('EXELIDOC_API_KEY', 'PASTE_API_KEY_HERE');
+  props.setProperty('EXELIDOC_API_KEY', 'OPENROUTER_API_KEY');
 }
 
 function onHomepage(e) {
