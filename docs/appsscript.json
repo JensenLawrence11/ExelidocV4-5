@@ -8,10 +8,13 @@
     "https://www.googleapis.com/auth/script.container.ui",
     "https://www.googleapis.com/auth/script.external_request"
   ],
+  "urlFetchWhitelist": [
+    "https://exelidocv4-5.onrender.com/"
+  ],
   "addOns": {
     "common": {
       "name": "Exelidoc",
-      "logoUrl": "https://your-domain.com/icon-128.png",
+      "logoUrl": "https://raw.githubusercontent.com/JensenLawrence11/ExelidocV4-5/main/browser-extension/icons/icon-128.png",
       "layoutProperties": {
         "primaryColor": "#1a73e8"
       }

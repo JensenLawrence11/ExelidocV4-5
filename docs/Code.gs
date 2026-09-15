@@ -19,9 +19,13 @@ function setConfig() {
 }
 
 function onHomepage(e) {
-  return HtmlService.createTemplateFromFile('Sidebar')
-    .evaluate()
-    .setTitle('Exelidoc');
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('Exelidoc'))
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph().setText('Exelidoc is installed.'))
+    )
+    .build();
 }
 
 /**
