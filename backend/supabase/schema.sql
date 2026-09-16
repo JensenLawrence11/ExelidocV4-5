@@ -8,6 +8,7 @@ create table if not exists users (
   id uuid primary key default gen_random_uuid(),
   email text unique not null,
   api_key text unique not null default encode(gen_random_bytes(24), 'hex'),
+  session_token text unique,
   stripe_customer_id text unique,
   stripe_subscription_id text,
   -- one of: inactive, trialing, active, past_due, canceled
@@ -30,6 +31,7 @@ create table if not exists ai_usage_logs (
 );
 
 create index if not exists idx_users_api_key on users(api_key);
+create index if not exists idx_users_session_token on users(session_token);
 create index if not exists idx_users_stripe_customer on users(stripe_customer_id);
 create index if not exists idx_usage_user_id on ai_usage_logs(user_id);
 

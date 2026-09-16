@@ -1,27 +1,31 @@
-const BACKEND_URL = "http://localhost:5000"; // TODO: swap to prod URL when deployed
+const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 
-// Same fallback key used by background.js -- keep these two in sync if you
-// change one. (A popup-saved key in chrome.storage.sync still overrides
-// this, same as it does for corrections -- see the DEFAULT_API_KEY comment
-// in background.js for why that matters.)
-const DEFAULT_API_KEY = "paste-your-key-here";
-
-const input = document.getElementById("api-key-input");
 const status = document.getElementById("status");
+const input = document.getElementById("api-key-input");
 
-chrome.storage.sync.get(["apiKey"], (result) => {
-  if (result.apiKey) {
-    input.value = result.apiKey;
-    status.textContent = "Active on Gmail and Google Docs.";
+chrome.storage.sync.get(["sessionToken"], (result) => {
+  if (result.sessionToken) {
+    input.value = "Session remembered";
+    input.disabled = true;
+    status.textContent = "Signed in and remembered on this browser.";
   } else {
-    status.textContent = "No API key set -- suggestions are paused.";
+    input.value = "";
+    input.disabled = false;
+    status.textContent = "Sign in once to remember your Exelidoc session.";
   }
 });
 
 document.getElementById("save-btn").addEventListener("click", () => {
-  const apiKey = input.value.trim();
-  chrome.storage.sync.set({ apiKey }, () => {
-    status.textContent = apiKey ? "Saved. Active on Gmail and Google Docs." : "No API key set -- suggestions are paused.";
+  const token = input.value.trim();
+  if (!token || token === "Session remembered") {
+    status.textContent = "Enter a valid session token from your account sign-in.";
+    return;
+  }
+
+  chrome.storage.sync.set({ sessionToken: token }, () => {
+    status.textContent = "Session saved. Exelidoc will remember you.";
+    input.value = "Session remembered";
+    input.disabled = true;
   });
 });
 
@@ -35,10 +39,10 @@ const generateStatus = document.getElementById("generate-status");
 const resultOutput = document.getElementById("result-output");
 const copyBtn = document.getElementById("copy-btn");
 
-function getActiveApiKey() {
+function getActiveSessionToken() {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(["apiKey"], ({ apiKey }) => {
-      resolve(apiKey || DEFAULT_API_KEY);
+    chrome.storage.sync.get(["sessionToken"], ({ sessionToken }) => {
+      resolve(sessionToken || "");
     });
   });
 }
@@ -50,9 +54,9 @@ generateBtn.addEventListener("click", async () => {
     return;
   }
 
-  const apiKey = await getActiveApiKey();
-  if (!apiKey || apiKey === "paste-your-key-here") {
-    generateStatus.textContent = "No API key set -- add one above first.";
+  const sessionToken = await getActiveSessionToken();
+  if (!sessionToken) {
+    generateStatus.textContent = "No session remembered yet -- sign in first.";
     return;
   }
 
@@ -66,13 +70,13 @@ generateBtn.addEventListener("click", async () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Api-Key": apiKey,
+        "X-Session-Token": sessionToken,
       },
       body: JSON.stringify({ prompt }),
     });
 
     if (response.status === 401) {
-      generateStatus.textContent = "Invalid API key.";
+      generateStatus.textContent = "Invalid session.";
     } else if (response.status === 402) {
       generateStatus.textContent = "Subscription not active.";
     } else if (response.status === 429) {

@@ -1,8 +1,7 @@
 /* global Office, Excel, Word, PowerPoint, document, localStorage */
 
 const BACKEND_URL = "https://exelidocv4-5.onrender.com";
-const API_KEY_STORAGE_KEY = "exelidoc_api_key";
-const DEFAULT_API_KEY = ""; // leave blank unless you intentionally want a shared fallback key
+const SESSION_TOKEN_STORAGE_KEY = "exelidoc_session_token";
 
 let currentHost = null;
 let preEditSnapshot = null; // { kind: "word" | "powerpoint", data: ... } -- used by Undo
@@ -41,17 +40,20 @@ Office.onReady((info) => {
 
 function setupSettingsUI() {
   const input = document.getElementById("api-key-input");
-  input.value = localStorage.getItem(API_KEY_STORAGE_KEY) || "";
-  document.getElementById("save-key-btn").addEventListener("click", () => {
-    localStorage.setItem(API_KEY_STORAGE_KEY, input.value.trim());
-    setStatus("Key saved.");
-  });
+  input.hidden = true;
+  const saveBtn = document.getElementById("save-key-btn");
+  saveBtn.hidden = true;
+
+  const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || "";
+  if (sessionToken) {
+    setStatus("Signed in and remembered.");
+  } else {
+    setStatus("Sign in once to remember this session.");
+  }
 }
 
-function getApiKey() {
-  const saved = localStorage.getItem(API_KEY_STORAGE_KEY);
-  if (saved) return saved;
-  return DEFAULT_API_KEY === "paste-your-key-here" ? "" : DEFAULT_API_KEY;
+function getSessionToken() {
+  return localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || "";
 }
 
 function setStatus(text) {
@@ -77,16 +79,19 @@ function escapeHtml(str) {
 }
 
 async function callBackend(path, payload) {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("No API key set -- paste your key above.");
+  const sessionToken = getSessionToken();
+  if (!sessionToken) throw new Error("No saved session. Sign in once to remember this account.");
 
   const res = await fetch(`${BACKEND_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-Token": sessionToken,
+    },
     body: JSON.stringify(payload),
   });
 
-  if (res.status === 401) throw new Error("invalid_api_key");
+  if (res.status === 401) throw new Error("invalid_session");
   if (res.status === 402) throw new Error("subscription_inactive");
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

@@ -1,5 +1,9 @@
-// TODO: point this at your deployed Flask backend once it's hosted.
 const BACKEND_URL = "https://exelidocv4-5.onrender.com";
+
+function rememberSession(sessionToken, email) {
+  localStorage.setItem("exelidoc_session_token", sessionToken);
+  localStorage.setItem("exelidoc_email", email || "");
+}
 
 async function handleFreeSignup(email, errorEl) {
   const response = await fetch(`${BACKEND_URL}/api/auth/signup-free`, {
@@ -8,10 +12,9 @@ async function handleFreeSignup(email, errorEl) {
     body: JSON.stringify({ email }),
   });
   const data = await response.json();
-  if (data.api_key) {
-    // Free tier has no Stripe redirect -- send them straight to success.html
-    // with the key attached directly instead of a session_id.
-    window.location.href = `success.html?free_key=${encodeURIComponent(data.api_key)}&email=${encodeURIComponent(data.email)}`;
+  if (data.session_token) {
+    rememberSession(data.session_token, data.email);
+    window.location.href = `success.html?session_token=${encodeURIComponent(data.session_token)}&email=${encodeURIComponent(data.email)}`;
   } else {
     errorEl.textContent = data.error || "Something went wrong.";
   }

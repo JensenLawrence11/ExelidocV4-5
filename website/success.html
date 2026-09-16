@@ -13,37 +13,33 @@
   <header class="hero" style="padding-bottom: 100px;">
     <span class="eyebrow">Subscription confirmed</span>
     <h1>You're in.</h1>
-    <p id="message">Loading your API key...</p>
-    <p class="hint">
-      Paste this key into the Exelidoc extension's popup or the Excel task pane's
-      settings. It's how Exelidoc knows you're subscribed — keep it private.
-    </p>
-    <code id="api-key" class="key-box"></code>
+    <p id="message">Saving your session...</p>
+    <p class="hint">We remember your account on this browser so you can use Exelidoc again without re-entering a secret key.</p>
   </header>
 
   <script>
-    const BACKEND_URL = "http://localhost:5000"; // TODO: prod URL
+    const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get("session_id");
-    const freeKey = params.get("free_key");
-    const freeEmail = params.get("email");
+    const sessionToken = params.get("session_token") || localStorage.getItem("exelidoc_session_token");
+    const email = params.get("email") || localStorage.getItem("exelidoc_email") || "your account";
     const messageEl = document.getElementById("message");
-    const keyEl = document.getElementById("api-key");
 
-    if (freeKey) {
-      // Free tier -- no Stripe involved, key was passed straight from signup-free.
-      messageEl.textContent = `Signed up as ${freeEmail} (Free plan).`;
-      keyEl.textContent = freeKey;
+    if (sessionToken) {
+      localStorage.setItem("exelidoc_session_token", sessionToken);
+      localStorage.setItem("exelidoc_email", email);
+      messageEl.textContent = `Signed in as ${email}. We will remember you for your next Exelidoc session.`;
     } else if (sessionId) {
       fetch(`${BACKEND_URL}/api/auth/key-for-session?session_id=${encodeURIComponent(sessionId)}`)
         .then((res) => res.json())
         .then((data) => {
-          if (data.api_key) {
-            messageEl.textContent = `Subscribed as ${data.email} (${data.tier} plan).`;
-            keyEl.textContent = data.api_key;
+          if (data.session_token) {
+            localStorage.setItem("exelidoc_session_token", data.session_token);
+            localStorage.setItem("exelidoc_email", data.email || "");
+            messageEl.textContent = `Subscribed as ${data.email} (${data.tier} plan). We will remember you for future Exelidoc use.`;
           } else {
-            messageEl.textContent = data.error || "Could not load your key.";
+            messageEl.textContent = data.error || "Could not load your session.";
           }
         })
         .catch(() => {

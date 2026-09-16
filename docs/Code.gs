@@ -1,15 +1,7 @@
 /**
  * Exelidoc -- Google Docs Add-on
  *
- * Run setConfig() once from this editor (select it in the function
- * dropdown above, click Run) before using the sidebar. It stores the
- * backend URL and API key in this script's own PropertiesService store --
- * separate from the Chrome extension's background.js, since Apps Script
- * runs on Google's servers and can't read files from the browser extension.
- *
- * IMPORTANT: same shared-key caveat as the Chrome extension's
- * DEFAULT_API_KEY -- fine for solo testing, swap to per-user keys before
- * real users touch this.
+ * Stores only a remembered session token in Apps Script, not a raw API key.
  */
 
 function setConfig() {
@@ -118,17 +110,17 @@ function getSelectionOrFullText() {
  */
 function callBackend(path, payload) {
   const props = PropertiesService.getScriptProperties();
-  const apiKey = props.getProperty('EXELIDOC_API_KEY');
+  const sessionToken = props.getProperty('EXELIDOC_SESSION_TOKEN');
   const backendUrl = props.getProperty('EXELIDOC_BACKEND_URL');
 
-  if (!backendUrl || !apiKey || apiKey === 'OPENROUTER_API_KEY') {
-    throw new Error('Set EXELIDOC_API_KEY in Apps Script Script Properties first');
+  if (!backendUrl || !sessionToken) {
+    throw new Error('Sign in once to store your Exelidoc session token');
   }
 
   const response = UrlFetchApp.fetch(`${backendUrl}${path}`, {
     method: 'post',
     contentType: 'application/json',
-    headers: { 'X-Api-Key': apiKey },
+    headers: { 'X-Session-Token': sessionToken },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
   });
@@ -144,7 +136,7 @@ function callBackend(path, payload) {
     }
   }
 
-  if (code === 401) throw new Error('invalid_api_key');
+  if (code === 401) throw new Error('invalid_session');
   if (code === 402) throw new Error('subscription_inactive');
   if (code === 429) throw new Error(body.error || 'monthly_limit_reached');
   if (code >= 400) throw new Error(body.error || 'request_failed');

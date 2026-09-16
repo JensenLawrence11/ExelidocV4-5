@@ -2,6 +2,7 @@
 All reads/writes to the `users` and `ai_usage_logs` tables live here, kept
 separate from the route layer.
 """
+import secrets
 from datetime import datetime, timezone, timedelta
 
 from services.supabase_client import get_supabase
@@ -11,16 +12,31 @@ PERIOD_LENGTH = timedelta(days=30)
 ACTIVE_SUBSCRIPTION_STATUSES = {"active", "trialing"}
 
 
+def generate_session_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
 def create_user(email: str, tier: str = "free") -> dict:
     """Free tier: called directly on signup. Paid tiers: called from the
     Stripe webhook once checkout completes."""
     supabase = get_supabase()
-    result = supabase.table("users").insert({
+    token = generate_session_token()
+    payload = {
         "email": email,
         "tier": tier,
         "requests_used": 0,
         "period_reset_at": (datetime.now(timezone.utc) + PERIOD_LENGTH).isoformat(),
-    }).execute()
+        "session_token": token,
+    }
+    try:
+        result = supabase.table("users").insert(payload).execute()
+    except Exception:
+        result = supabase.table("users").insert({
+            "email": email,
+            "tier": tier,
+            "requests_used": 0,
+            "period_reset_at": (datetime.now(timezone.utc) + PERIOD_LENGTH).isoformat(),
+        }).execute()
     return result.data[0]
 
 
@@ -28,6 +44,27 @@ def get_user_by_api_key(api_key: str) -> dict | None:
     supabase = get_supabase()
     result = supabase.table("users").select("*").eq("api_key", api_key).execute()
     return result.data[0] if result.data else None
+
+
+def get_user_by_session_token(session_token: str) -> dict | None:
+    if not session_token:
+        return None
+    supabase = get_supabase()
+    try:
+        result = supabase.table("users").select("*").eq("session_token", session_token).execute()
+    except Exception:
+        return None
+    return result.data[0] if result.data else None
+
+
+def ensure_session_token(user_id: str, session_token: str | None = None) -> str:
+    token = session_token or generate_session_token()
+    supabase = get_supabase()
+    try:
+        supabase.table("users").update({"session_token": token}).eq("id", user_id).execute()
+    except Exception:
+        pass
+    return token
 
 
 def get_user_by_email(email: str) -> dict | None:
