@@ -28,10 +28,11 @@ class Config:
     OPENROUTER_SITE_URL = os.environ.get("OPENROUTER_SITE_URL", "")
     OPENROUTER_SITE_NAME = os.environ.get("OPENROUTER_SITE_NAME", "")
 
+    APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://exelidocv4-5.onrender.com")
     STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
     STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
     STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
-    STRIPE_PRICE_ID_PRO = os.environ.get("STRIPE_PRICE_ID_PRO")
+    STRIPE_PRICE_ID_PRO = os.environ.get("STRIPE_PRICE_ID_PRO") or os.environ.get("STRIPE_PRICE_ID_MONTHLY")
     STRIPE_PRICE_ID_ENTERPRISE = os.environ.get("STRIPE_PRICE_ID_ENTERPRISE")
 
     TIER_LIMITS = {

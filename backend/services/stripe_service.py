@@ -12,6 +12,19 @@ TIER_PRICE_IDS = {
 }
 
 
+def _public_base_url() -> str:
+    base = (Config.APP_PUBLIC_URL or "https://exelidocv4-5.onrender.com").rstrip("/")
+    return base
+
+
+def _success_url() -> str:
+    return f"{_public_base_url()}/success.html?session_id={{CHECKOUT_SESSION_ID}}"
+
+
+def _cancel_url() -> str:
+    return f"{_public_base_url()}/download.html"
+
+
 def create_checkout_session(customer_email: str, tier: str):
     """Free tier never calls this -- only 'pro' and 'enterprise' go through Stripe."""
     price_id = TIER_PRICE_IDS.get(tier)
@@ -23,16 +36,10 @@ def create_checkout_session(customer_email: str, tier: str):
         payment_method_types=["card"],
         line_items=[{"price": price_id, "quantity": 1}],
         customer_email=customer_email,
-        # Carried onto both the Checkout Session AND the Subscription object,
-        # so the webhook can read the tier back out on every relevant event
-        # (initial purchase, and later plan changes) without guessing from
-        # the price ID alone.
         metadata={"tier": tier},
         subscription_data={"metadata": {"tier": tier}},
-        # TODO: swap to your real domain once deployed, e.g.
-        # https://exelidoc.com/success.html?session_id={CHECKOUT_SESSION_ID}
-        success_url="http://localhost:8000/success.html?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url="http://localhost:8000/download.html",
+        success_url=_success_url(),
+        cancel_url=_cancel_url(),
     )
 
 
