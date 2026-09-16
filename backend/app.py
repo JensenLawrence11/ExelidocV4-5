@@ -4,7 +4,9 @@ Entrypoint. Run with:
 or in production behind gunicorn:
     gunicorn app:app
 """
-from flask import Flask, jsonify, request
+from pathlib import Path
+
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 from config import Config
@@ -44,6 +46,17 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
+    project_root = Path(__file__).resolve().parent.parent
+    office_addin_root = project_root / "office-addin"
+
+    @app.route("/src/<path:filename>")
+    def serve_office_addin_src(filename):
+        return send_from_directory(office_addin_root / "src", filename)
+
+    @app.route("/assets/<path:filename>")
+    def serve_office_addin_assets(filename):
+        return send_from_directory(office_addin_root / "assets", filename)
+
     # Chrome extension IDs are install-specific and therefore not stable across
     # machines. Allow any extension origin plus the configured web origins and
     # localhost addresses that the app uses during local development.
@@ -67,6 +80,10 @@ def create_app():
     @app.get("/api/health")
     def health():
         return jsonify(status="ok", service="exelidoc-backend")
+
+    @app.get("/")
+    def root():
+        return jsonify(status="ok", service="exelidoc-backend", static_host="enabled")
 
     return app
 
