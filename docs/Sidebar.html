@@ -2,63 +2,161 @@
 <html>
   <head>
     <base target="_top">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
-      body {
-        font-family: 'Google Sans', Roboto, Arial, sans-serif;
-        font-size: 13px;
-        padding: 12px;
-        color: #202124;
+      * {
+        box-sizing: border-box;
       }
+
+      html, body {
+        height: 100%;
+      }
+
+      body {
+        font-family: 'Inter', Roboto, Arial, sans-serif;
+        font-size: 13px;
+        padding: 18px;
+        color: #1c2733;
+        background: #fafbfc;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+
+      #main {
+        flex: 1;
+      }
+
+      #hint {
+        margin: 6px 0 0;
+        color: #5f6b7a;
+        font-size: 11px;
+        line-height: 1.5;
+        letter-spacing: 0.1px;
+      }
+
       textarea {
         width: 100%;
-        min-height: 70px;
+        min-height: 76px;
         box-sizing: border-box;
-        padding: 8px;
-        border: 1px solid #dadce0;
-        border-radius: 6px;
-        font: inherit;
+        padding: 11px 13px;
+        border: 1.5px solid #dde2e8;
+        border-radius: 10px;
+        font-family: 'Inter', Roboto, Arial, sans-serif;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.5;
         resize: vertical;
+        background: #fff;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
+
+      textarea::placeholder {
+        color: #8a94a1;
+      }
+
       textarea:focus {
         outline: none;
-        border-color: #1a73e8;
-        box-shadow: 0 0 0 1px #1a73e8;
+        border-color: #0b57cf;
+        box-shadow: 0 0 0 3px rgba(11, 87, 207, 0.12);
       }
+
       button {
-        margin-top: 8px;
-        padding: 6px 16px;
+        margin-top: 12px;
+        padding: 9px 22px;
         border: none;
-        border-radius: 4px;
-        background: #1a73e8;
+        border-radius: 8px;
+        background: #0b57cf;
         color: #fff;
-        font-weight: 500;
+        font-family: 'Manrope', 'Inter', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        letter-spacing: 0.2px;
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
       }
+
+      button svg {
+        flex-shrink: 0;
+      }
+
       button:hover {
-        background: #1765cc;
+        background: #0842a0;
+        box-shadow: 0 2px 6px rgba(11, 87, 207, 0.25);
       }
+
+      button:active {
+        background: #073580;
+        transform: scale(0.98);
+      }
+
       button:disabled {
-        background: #a8c7fa;
+        background: #c6d7f5;
+        color: #f0f4fb;
         cursor: default;
+        box-shadow: none;
+        transform: none;
       }
+
+      button:disabled svg {
+        opacity: 0.6;
+      }
+
       #status {
-        margin-top: 10px;
-        color: #5f6368;
+        margin-top: 12px;
+        color: #5f6b7a;
         font-size: 12px;
+        font-weight: 500;
         min-height: 14px;
       }
-      #hint {
-        margin-top: 4px;
-        color: #5f6368;
-        font-size: 11px;
+
+      #footer {
+        margin-top: 20px;
+        padding-top: 12px;
+        border-top: 1px solid #e8ebee;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        color: #9aa4b0;
+        font-size: 10.5px;
+        font-weight: 500;
+        letter-spacing: 0.2px;
+      }
+
+      #footer svg {
+        flex-shrink: 0;
+        opacity: 0.7;
       }
     </style>
   </head>
   <body>
-    <textarea id="instruction" placeholder="e.g. make this more formal, fix grammar... or write something new if nothing is selected"></textarea>
-    <div id="hint">Select text to edit it, or leave nothing selected to generate new text.</div>
-    <button id="ask">Ask</button>
-    <div id="status"></div>
+    <div id="main">
+      <textarea id="instruction" placeholder="e.g. make this more formal, fix grammar... or write something new if nothing is selected"></textarea>
+      <div id="hint">Select text to edit it, or leave nothing selected to generate new text.</div>
+
+      <button id="ask">
+        <!-- Swap this <svg> block for an <img src="..." width="14" height="14"> if you have a logo file -->
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L14.09 8.26L20.51 8.27L15.35 12.14L17.36 18.4L12 14.6L6.64 18.4L8.65 12.14L3.49 8.27L9.91 8.26L12 2Z" fill="currentColor"/>
+        </svg>
+        Ask
+      </button>
+
+      <div id="status"></div>
+    </div>
+
+    <div id="footer">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L14.09 8.26L20.51 8.27L15.35 12.14L17.36 18.4L12 14.6L6.64 18.4L8.65 12.14L3.49 8.27L9.91 8.26L12 2Z" fill="currentColor"/>
+      </svg>
+      Powered by AI
+    </div>
 
     <script>
       const askBtn = document.getElementById('ask');
