@@ -112,3 +112,21 @@ def test_checkout_reports_bad_price_configuration_to_website():
 
     assert response.status_code == 503
     assert "recurring Price ID" in response.get_json()["error"]
+
+
+def test_checkout_reports_stripe_price_not_found():
+    app = create_app()
+    free_user = {"email": "user@example.com", "tier": "free"}
+
+    with app.test_client() as client:
+        with patch("routes.stripe_routes.get_user_by_email", return_value=free_user), patch(
+            "routes.stripe_routes.create_checkout_session",
+            side_effect=stripe_service.stripe.error.InvalidRequestError("No such price", "line_items"),
+        ):
+            response = client.post(
+                "/api/stripe/create-checkout-session",
+                json={"customer_email": "user@example.com", "tier": "pro"},
+            )
+
+    assert response.status_code == 503
+    assert "same Stripe account and test/live mode" in response.get_json()["error"]

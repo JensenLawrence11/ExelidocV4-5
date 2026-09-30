@@ -4,6 +4,7 @@ with a tier, Stripe redirects the user through checkout, then calls our
 /webhook to confirm payment and provision/update the user's row in Supabase.
 """
 from flask import Blueprint, request, jsonify, current_app
+import stripe
 
 from services.stripe_service import create_checkout_session, handle_webhook_event
 from services.user_service import (
@@ -43,6 +44,13 @@ def create_checkout_session_route():
 
     try:
         session = create_checkout_session(customer_email=email, tier=tier)
+    except stripe.error.InvalidRequestError:
+        return jsonify(
+            error=(
+                "Stripe could not find the configured price. Check that the Price ID belongs to "
+                "the same Stripe account and test/live mode as STRIPE_SECRET_KEY, and that it is an active recurring price."
+            )
+        ), 503
     except ValueError as e:
         return jsonify(error=str(e)), 503
 
