@@ -15,6 +15,11 @@ from routes.stripe_routes import stripe_bp
 from routes.auth import auth_bp
 
 
+def _configured_frontend_origins() -> list[str]:
+    origins = [*Config.FRONTEND_ORIGINS, Config.APP_PUBLIC_URL]
+    return [origin.strip().rstrip("/") for origin in origins if origin and origin.strip()]
+
+
 def _is_allowed_origin(origin: str | None) -> bool:
     if not origin:
         return False
@@ -22,10 +27,7 @@ def _is_allowed_origin(origin: str | None) -> bool:
     if origin.startswith("chrome-extension://"):
         return True
 
-    for allowed in Config.FRONTEND_ORIGINS:
-        if not allowed:
-            continue
-        allowed = allowed.strip()
+    for allowed in _configured_frontend_origins():
         if allowed == "*":
             return True
         if allowed.endswith("/*"):
@@ -60,7 +62,7 @@ def create_app():
     # Chrome extension IDs are install-specific and therefore not stable across
     # machines. Allow any extension origin plus the configured web origins and
     # localhost addresses that the app uses during local development.
-    CORS(app, origins=Config.FRONTEND_ORIGINS, supports_credentials=True)
+    CORS(app, origins=_configured_frontend_origins(), supports_credentials=True)
 
     @app.after_request
     def add_cors_headers(response):
