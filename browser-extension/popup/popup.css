@@ -45,7 +45,7 @@ label {
   margin-bottom: 6px;
 }
 
-#api-key-input {
+#email-input {
   width: 100%;
   padding: 8px 10px;
   font-family: var(--font-mono);
@@ -54,12 +54,12 @@ label {
   box-sizing: border-box;
 }
 
-#api-key-input:focus {
+#email-input:focus {
   outline: none;
   border-color: var(--blue);
 }
 
-#save-btn {
+#create-account-btn, #sign-out-btn {
   margin-top: 10px;
   width: 100%;
   padding: 9px 0;
@@ -72,13 +72,31 @@ label {
   cursor: pointer;
 }
 
-#save-btn:hover {
+#create-account-btn:hover, #sign-out-btn:hover {
   background: var(--blue-deep);
+}
+
+#create-account-btn:disabled {
+  background: var(--gray);
+  cursor: wait;
+}
+
+#sign-out-btn {
+  margin-top: 8px;
+  background: #fff;
+  color: var(--blue);
+  border: 1px solid var(--blue);
 }
 
 #status {
   margin-top: 12px;
   font-size: 12px;
+  color: var(--gray);
+}
+
+.account-note {
+  font-size: 11px;
+  line-height: 1.45;
   color: var(--gray);
 }
 

@@ -17,12 +17,15 @@ def signup_free():
     """
     data = request.get_json(silent=True) or {}
     email = data.get("email")
-    if not email:
+    if not isinstance(email, str) or not email.strip():
         return jsonify(error="email is required"), 400
 
+    email = email.strip().lower()
     user = get_user_by_email(email)
-    if not user:
-        user = create_user(email, tier="free")
+    if user:
+        return jsonify(error="An account already exists for this email."), 409
+
+    user = create_user(email, tier="free")
 
     session_token = user.get("session_token") or ensure_session_token(user["id"])
 

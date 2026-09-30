@@ -4,7 +4,7 @@ const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "ANALYZE_TEXT") {
-    chrome.storage.sync.get(["sessionToken"], ({ sessionToken }) => {
+    chrome.storage.local.get(["sessionToken"], ({ sessionToken }) => {
       if (!sessionToken) {
         sendResponse({ ok: false, error: "no_session" });
         return;

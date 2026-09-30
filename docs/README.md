@@ -1,48 +1,46 @@
-# Exelidoc -- Google Docs Add-on
+# Exelidoc Google Docs Apps Script prototype
 
-This is a separate Apps Script project, not part of the Chrome extension.
-Drop this whole `docs-addon` folder into the root of your repo, alongside
-`browser-extension/` and `backend/`.
+This is a separate, developer-only Google Docs add-on prototype. It is not
+the Chrome/Edge extension and is not published in the Google Workspace
+Marketplace. For the simpler Gmail and Google Docs install, use the browser
+extension instructions on the website's Download page.
 
-## One-time setup
+## Developer setup
+
+Prerequisites: Node.js and the Google Apps Script CLI (`clasp`). The `docs/`
+folder already contains its Apps Script project configuration.
 
 ```bash
 npm install -g @google/clasp
 clasp login
-cd docs-addon
-clasp create --type docs --title "Exelidoc"
+cd docs
 clasp push
+clasp open
 ```
 
-`clasp create` will generate its own `.clasp.json` with the new script ID --
-that's expected, just let it write into this folder.
+In the Apps Script editor, open **Project Settings -> Script Properties** and
+set:
 
-## Before first use
+- `EXELIDOC_BACKEND_URL` = `https://exelidocv4-5.onrender.com`
+- `EXELIDOC_SESSION_TOKEN` = the session token from your Exelidoc account
 
-1. Open the project in the Apps Script editor (clasp will print a URL after
-   `clasp create`, or run `clasp open`).
-2. In Apps Script, open **Project Settings → Script Properties** and add:
-  - `EXELIDOC_BACKEND_URL` = `https://exelidocv4-5.onrender.com`
-  - `EXELIDOC_API_KEY` = your valid backend API key
-3. Do not put the API key in `Code.gs` or commit it. The Docs add-on calls
-  `/api/ai/analyze-text` for selected text and `/api/ai/generate-text` for
-  generation, using the key from Script Properties.
+Keep the session token private. The add-on reads it from Script Properties;
+do not put it in `Code.gs` or commit it. `setConfig()` can set the backend URL.
 
-## Testing without publishing
+## Test deployment
 
-Deploy -> Test deployments -> Install. Open any Google Doc, then
-Extensions -> Exelidoc to open the sidebar. No Marketplace listing or
-OAuth verification needed for this step -- that's only required once you
-want other people to install it.
+In Apps Script, choose **Deploy -> Test deployments -> Install**. Open a
+Google Doc and choose **Extensions -> Exelidoc**. Publishing for other users
+requires a separate deployment and Google authorization review.
 
-## Known limitations (v1)
+## Current limitations
 
-- Multi-paragraph selections only replace the first paragraph in the
-  selected range -- fine for single-paragraph edits, needs extending for
-  larger selections.
-- No formatting preservation beyond "don't touch text outside the
-  selection" -- an edited selection itself loses inline formatting
-  (bold/italic/links) since the AI only sees plain text.
-- Shared `EXELIDOC_API_KEY` -- same caveat as the Chrome extension's
-  `DEFAULT_API_KEY`. Swap to per-user keys before any real users touch
-  this.
+- A multi-paragraph selection only replaces the first selected text range.
+- Inline formatting within replaced text is not preserved.
+- This prototype uses a session token configured by the developer in Script
+  Properties; it does not provide a per-user sign-in flow. Do not deploy it
+  for general use without addressing that limitation.
+
+The current Exelidoc signup flow does not verify email ownership and does not
+support signing into an existing account from a fresh extension install. Add
+verified account authentication before opening signup to the public.

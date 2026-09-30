@@ -16,6 +16,18 @@ class CorsExtensionOriginTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Access-Control-Allow-Origin", response.headers)
 
+    def test_extension_preflight_allows_session_token_header(self):
+        response = self.client.options(
+            "/api/ai/analyze-text",
+            headers={
+                "Origin": "chrome-extension://random-extension-id-123",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type,x-session-token",
+            },
+        )
+
+        self.assertIn("X-Session-Token", response.headers["Access-Control-Allow-Headers"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -150,7 +150,9 @@ function createExelidocPanel() {
           return;
         }
         if (!response || !response.ok) {
-          statusEl.textContent = `Error: ${response ? response.error : "no response"}`;
+          statusEl.textContent = response && response.error === "no_session"
+            ? "Open the Exelidoc toolbar popup to create your account first."
+            : `Error: ${response ? response.error : "no response"}`;
           return;
         }
         if (response.data && response.data.error) {

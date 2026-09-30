@@ -395,3 +395,19 @@ footer a {
 footer a:hover {
   color: var(--blue);
 }
+
+.site-status {
+  max-width: 680px;
+  margin: 12px auto 0;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pricing a:not(.btn) {
+  color: #B7C0D6;
+}
+
+.pricing a:not(.btn):hover {
+  color: #fff;
+}

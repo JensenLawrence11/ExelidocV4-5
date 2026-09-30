@@ -34,11 +34,8 @@ def create_checkout_session_route():
     if tier not in PAID_TIERS:
         return jsonify(error=f"tier must be one of {sorted(PAID_TIERS)}"), 400
 
-    # Make sure a Supabase row exists (and therefore an API key exists)
-    # before the user even finishes paying. Starts on the free tier --
-    # the webhook upgrades it once payment completes.
     if not get_user_by_email(email):
-        create_user(email, tier="free")
+        return jsonify(error="Create your free account in the extension before upgrading."), 409
 
     try:
         session = create_checkout_session(customer_email=email, tier=tier)

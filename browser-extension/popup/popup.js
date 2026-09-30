@@ -1,31 +1,65 @@
 const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 
 const status = document.getElementById("status");
-const input = document.getElementById("api-key-input");
+const emailInput = document.getElementById("email-input");
+const createAccountBtn = document.getElementById("create-account-btn");
+const signOutBtn = document.getElementById("sign-out-btn");
 
-chrome.storage.sync.get(["sessionToken"], (result) => {
-  if (result.sessionToken) {
-    input.value = "Session remembered";
-    input.disabled = true;
-    status.textContent = "Signed in and remembered on this browser.";
-  } else {
-    input.value = "";
-    input.disabled = false;
-    status.textContent = "Sign in once to remember your Exelidoc session.";
-  }
+function setSignedIn(email) {
+  emailInput.value = email || "";
+  emailInput.disabled = Boolean(email);
+  createAccountBtn.hidden = Boolean(email);
+  signOutBtn.hidden = !email;
+  status.textContent = email
+    ? `Signed in as ${email}. Your account is remembered in this browser.`
+    : "Create an account to use Exelidoc. Free accounts include 50 AI requests per 30 days.";
+}
+
+chrome.storage.local.get(["sessionToken", "accountEmail"], (result) => {
+  setSignedIn(result.sessionToken ? result.accountEmail : "");
 });
 
-document.getElementById("save-btn").addEventListener("click", () => {
-  const token = input.value.trim();
-  if (!token || token === "Session remembered") {
-    status.textContent = "Enter a valid session token from your account sign-in.";
+createAccountBtn.addEventListener("click", async () => {
+  const email = emailInput.value.trim().toLowerCase();
+  if (!emailInput.validity.valid || !email) {
+    status.textContent = "Enter a valid email address to create your account.";
     return;
   }
 
-  chrome.storage.sync.set({ sessionToken: token }, () => {
-    status.textContent = "Session saved. Exelidoc will remember you.";
-    input.value = "Session remembered";
-    input.disabled = true;
+  createAccountBtn.disabled = true;
+  status.textContent = "Creating your account...";
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/signup-free`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await response.json();
+
+    if (response.status === 409) {
+      status.textContent = "An account already exists for this email. Existing-account sign-in is not available in this beta yet.";
+      return;
+    }
+    if (!response.ok || !data.session_token) {
+      status.textContent = data.error || "Could not create your account. Try again shortly.";
+      return;
+    }
+
+    chrome.storage.local.set({ sessionToken: data.session_token, accountEmail: data.email }, () => {
+      setSignedIn(data.email);
+    });
+  } catch (error) {
+    console.error("Exelidoc: account signup failed --", error);
+    status.textContent = "Could not reach Exelidoc. Try again shortly.";
+  } finally {
+    createAccountBtn.disabled = false;
+  }
+});
+
+signOutBtn.addEventListener("click", () => {
+  chrome.storage.local.remove(["sessionToken", "accountEmail"], () => {
+    setSignedIn("");
+    status.textContent = "Signed out.";
   });
 });
 
@@ -41,7 +75,7 @@ const copyBtn = document.getElementById("copy-btn");
 
 function getActiveSessionToken() {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(["sessionToken"], ({ sessionToken }) => {
+    chrome.storage.local.get(["sessionToken"], ({ sessionToken }) => {
       resolve(sessionToken || "");
     });
   });
