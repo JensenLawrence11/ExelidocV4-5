@@ -30,6 +30,10 @@ def create_checkout_session(customer_email: str, tier: str):
     price_id = TIER_PRICE_IDS.get(tier)
     if not price_id:
         raise ValueError(f"Unknown or unconfigured tier: {tier}")
+    if not price_id.startswith("price_"):
+        raise ValueError(
+            f"Stripe {tier} must be configured with a recurring Price ID beginning with 'price_', not a Product ID."
+        )
 
     return stripe.checkout.Session.create(
         mode="subscription",

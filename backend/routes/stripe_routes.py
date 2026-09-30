@@ -44,7 +44,7 @@ def create_checkout_session_route():
     try:
         session = create_checkout_session(customer_email=email, tier=tier)
     except ValueError as e:
-        return jsonify(error=str(e)), 500
+        return jsonify(error=str(e)), 503
 
     return jsonify(url=session.url)
 
