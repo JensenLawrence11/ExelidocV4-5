@@ -38,3 +38,25 @@ def test_paid_checkout_requires_extension_account():
     assert response.status_code == 409
     assert "extension" in response.get_json()["error"]
     create_checkout.assert_not_called()
+
+
+def test_paid_checkout_does_not_create_duplicate_active_subscription():
+    app = create_app()
+    paid_user = {
+        "email": "paid@example.com",
+        "tier": "pro",
+        "subscription_status": "active",
+    }
+
+    with app.test_client() as client:
+        with patch("routes.stripe_routes.get_user_by_email", return_value=paid_user), patch(
+            "routes.stripe_routes.create_checkout_session"
+        ) as create_checkout:
+            response = client.post(
+                "/api/stripe/create-checkout-session",
+                json={"customer_email": "paid@example.com", "tier": "pro"},
+            )
+
+    assert response.status_code == 409
+    assert "active paid plan" in response.get_json()["error"]
+    create_checkout.assert_not_called()

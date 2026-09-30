@@ -20,14 +20,14 @@
       <p class="account-note">Beta limitation: email ownership is not verified, and signing into an existing account on a fresh install is not available yet.</p>
     </section>
 
-    <section id="generate-section">
-      <label for="prompt-input">Generate text</label>
-      <textarea id="prompt-input" rows="3" placeholder="e.g. a short email asking to reschedule Thursday's meeting"></textarea>
-      <button id="generate-btn">Generate</button>
-      <p id="generate-status"></p>
-      <textarea id="result-output" rows="6" readonly placeholder="Generated text will appear here"></textarea>
-      <button id="copy-btn" style="display:none;">Copy to clipboard</button>
+    <section id="plans-section" hidden>
+      <label>Plans</label>
+      <p class="plans-note">Free: 50 requests per 30 days. Paid prices are shown securely at Stripe Checkout.</p>
+      <button class="checkout-btn" data-tier="pro">Upgrade to Pro · 500 requests</button>
+      <button class="checkout-btn" data-tier="enterprise">Upgrade to Enterprise · 5,000 requests</button>
+      <p id="billing-status" role="status" aria-live="polite"></p>
     </section>
+
   </main>
   <script src="popup.js"></script>
 </body>

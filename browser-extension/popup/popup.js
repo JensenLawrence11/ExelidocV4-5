@@ -4,12 +4,15 @@ const status = document.getElementById("status");
 const emailInput = document.getElementById("email-input");
 const createAccountBtn = document.getElementById("create-account-btn");
 const signOutBtn = document.getElementById("sign-out-btn");
+const plansSection = document.getElementById("plans-section");
+const billingStatus = document.getElementById("billing-status");
 
 function setSignedIn(email) {
   emailInput.value = email || "";
   emailInput.disabled = Boolean(email);
   createAccountBtn.hidden = Boolean(email);
   signOutBtn.hidden = !email;
+  plansSection.hidden = !email;
   status.textContent = email
     ? `Signed in as ${email}. Your account is remembered in this browser.`
     : "Create an account to use Exelidoc. Free accounts include 50 AI requests per 30 days.";
@@ -63,84 +66,33 @@ signOutBtn.addEventListener("click", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Text generation
-// ---------------------------------------------------------------------------
+document.querySelectorAll(".checkout-btn").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const email = emailInput.value.trim();
+    const tier = button.dataset.tier;
+    billingStatus.textContent = "Opening secure checkout...";
+    document.querySelectorAll(".checkout-btn").forEach((item) => { item.disabled = true; });
 
-const promptInput = document.getElementById("prompt-input");
-const generateBtn = document.getElementById("generate-btn");
-const generateStatus = document.getElementById("generate-status");
-const resultOutput = document.getElementById("result-output");
-const copyBtn = document.getElementById("copy-btn");
-
-function getActiveSessionToken() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(["sessionToken"], ({ sessionToken }) => {
-      resolve(sessionToken || "");
-    });
-  });
-}
-
-generateBtn.addEventListener("click", async () => {
-  const prompt = promptInput.value.trim();
-  if (!prompt) {
-    generateStatus.textContent = "Type what you want first.";
-    return;
-  }
-
-  const sessionToken = await getActiveSessionToken();
-  if (!sessionToken) {
-    generateStatus.textContent = "No session remembered yet -- sign in first.";
-    return;
-  }
-
-  generateBtn.disabled = true;
-  generateStatus.textContent = "Generating...";
-  resultOutput.value = "";
-  copyBtn.style.display = "none";
-
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/ai/generate-text`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Session-Token": sessionToken,
-      },
-      body: JSON.stringify({ prompt }),
-    });
-
-    if (response.status === 401) {
-      generateStatus.textContent = "Invalid session.";
-    } else if (response.status === 402) {
-      generateStatus.textContent = "Subscription not active.";
-    } else if (response.status === 429) {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/stripe/create-checkout-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_email: email, tier }),
+      });
       const data = await response.json();
-      generateStatus.textContent = `Monthly limit reached (${data.tier || ""} plan).`;
-    } else if (!response.ok) {
-      generateStatus.textContent = "Something went wrong -- try again.";
-    } else {
-      const data = await response.json();
-      if (data.generated) {
-        resultOutput.value = data.generated;
-        copyBtn.style.display = "block";
-        generateStatus.textContent = data.remaining_requests !== undefined
-          ? `Done. ${data.remaining_requests} requests left this month.`
-          : "Done.";
-      } else {
-        generateStatus.textContent = data.error || "No text was generated.";
+
+      if (!response.ok || !data.url) {
+        billingStatus.textContent = data.error || "Could not start checkout. Try again shortly.";
+        return;
       }
-    }
-  } catch (err) {
-    console.error("Exelidoc: generate request failed --", err);
-    generateStatus.textContent = "Could not reach the server.";
-  } finally {
-    generateBtn.disabled = false;
-  }
-});
 
-copyBtn.addEventListener("click", () => {
-  navigator.clipboard.writeText(resultOutput.value).then(() => {
-    copyBtn.textContent = "Copied!";
-    setTimeout(() => { copyBtn.textContent = "Copy to clipboard"; }, 1500);
+      chrome.tabs.create({ url: data.url });
+      billingStatus.textContent = "Checkout opened in a new tab.";
+    } catch (error) {
+      console.error("Exelidoc: checkout request failed --", error);
+      billingStatus.textContent = "Could not reach Exelidoc. Try again shortly.";
+    } finally {
+      document.querySelectorAll(".checkout-btn").forEach((item) => { item.disabled = false; });
+    }
   });
 });

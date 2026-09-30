@@ -6,8 +6,8 @@ async function handlePaidCheckout(email, tier, errorEl) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ customer_email: email, tier }),
   });
-  const data = await response.json();
-  if (data.url) {
+  const data = await response.json().catch(() => ({}));
+  if (response.ok && data.url) {
     window.location.href = data.url;
   } else {
     errorEl.textContent = data.error || "Something went wrong.";
@@ -28,10 +28,13 @@ document.querySelectorAll(".tier-subscribe-btn").forEach((btn) => {
     }
 
     try {
+      btn.disabled = true;
       await handlePaidCheckout(email, tier, errorEl);
     } catch (err) {
       console.error("Signup/checkout failed:", err);
       errorEl.textContent = "Could not reach the server.";
+    } finally {
+      btn.disabled = false;
     }
   });
 });

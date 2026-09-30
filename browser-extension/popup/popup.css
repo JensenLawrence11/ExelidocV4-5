@@ -16,6 +16,8 @@ body {
   margin: 0;
   color: var(--black);
   background: #fff;
+  max-height: 600px;
+  overflow-y: auto;
 }
 
 header {
@@ -100,74 +102,37 @@ label {
   color: var(--gray);
 }
 
-#generate-section {
+#plans-section {
   margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid #EEF1F7;
 }
 
-#prompt-input, #result-output {
-  width: 100%;
-  padding: 8px 10px;
-  font-family: var(--font-body);
-  font-size: 12px;
-  border: 1px solid #D7DDEA;
-  box-sizing: border-box;
-  resize: vertical;
-}
-
-#prompt-input:focus {
-  outline: none;
-  border-color: var(--blue);
-}
-
-#result-output {
-  margin-top: 10px;
-  background: var(--blue-pale);
-  color: var(--black);
-}
-
-#generate-btn {
-  margin-top: 10px;
-  width: 100%;
-  padding: 9px 0;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 13px;
-  background: var(--blue);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-}
-
-#generate-btn:hover {
-  background: var(--blue-deep);
-}
-
-#generate-btn:disabled {
-  background: var(--gray);
-  cursor: not-allowed;
-}
-
-#generate-status {
-  margin-top: 8px;
-  font-size: 11px;
+.plans-note, #billing-status {
+  margin: 8px 0;
   color: var(--gray);
-  min-height: 14px;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
-#copy-btn {
-  margin-top: 8px;
+.checkout-btn {
   width: 100%;
-  padding: 7px 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  margin-top: 8px;
+  padding: 9px 8px;
+  border: 1px solid var(--blue);
   background: #fff;
   color: var(--blue);
-  border: 1px solid var(--blue);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
-#copy-btn:hover {
+.checkout-btn:hover {
   background: var(--blue-pale);
+}
+
+.checkout-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }

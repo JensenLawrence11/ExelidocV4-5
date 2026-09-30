@@ -34,8 +34,11 @@ def create_checkout_session_route():
     if tier not in PAID_TIERS:
         return jsonify(error=f"tier must be one of {sorted(PAID_TIERS)}"), 400
 
-    if not get_user_by_email(email):
+    user = get_user_by_email(email)
+    if not user:
         return jsonify(error="Create your free account in the extension before upgrading."), 409
+    if user.get("tier") in PAID_TIERS and user.get("subscription_status") in ("active", "trialing"):
+        return jsonify(error="An active paid plan already exists for this account. Plan changes are not available here yet."), 409
 
     try:
         session = create_checkout_session(customer_email=email, tier=tier)
