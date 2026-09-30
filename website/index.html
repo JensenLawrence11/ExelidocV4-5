@@ -85,6 +85,7 @@
     .download-box p { margin: 0 0 20px; color: #c4cec4; font-size: 14px; }
     .download-box .button { width: 100%; }
     .beta-note { margin-top: 15px !important; color: #adbaad !important; font-size: 12px !important; }
+    .preview-warning { margin-top: 12px !important; padding-top: 12px; border-top: 1px solid #44534a; }
     .plans { background: var(--paper); }
     .plans-head { display: flex; align-items: end; justify-content: space-between; gap: 28px; }
     .plans-head .section-intro { max-width: 420px; }
@@ -156,7 +157,7 @@
   <header class="hero">
     <div class="hero-inner">
       <div>
-        <span class="eyebrow">Chrome and Edge · Gmail and Google Docs</span>
+        <span class="eyebrow">Chrome · Gmail · Google Docs</span>
         <h1>Writing help,<br />when you ask.</h1>
         <p class="hero-copy">Rewrite a draft, shift its tone, clean up a sentence, or start with a blank page. Exelidoc works beside the writing you already do.</p>
         <div class="hero-actions">
@@ -193,21 +194,42 @@
     <section class="section install-band" id="install">
       <div class="section-inner install-grid">
         <div>
-          <p class="section-kicker">Developer preview</p>
-          <h2 class="section-heading">Add it to Chrome or Edge.</h2>
-          <p class="section-intro">The extension is not yet listed in the Chrome Web Store. Install the current preview from the project source.</p>
+          <p class="section-kicker">Chrome Web Store</p>
+          <h2 class="section-heading">A direct Chrome install is next.</h2>
+          <p class="section-intro">The extension is being prepared for the Chrome Web Store. Once the listing is approved, you will be able to install it directly in Chrome without downloading Git files or using Developer mode.</p>
           <ol class="install-steps">
-            <li><div><strong>Download and extract</strong><span>Get the source archive, then unzip it on your computer.</span></div></li>
-            <li><div><strong>Load the extension</strong><span>Open <code>chrome://extensions</code> or <code>edge://extensions</code>, enable Developer mode, and choose Load unpacked.</span></div></li>
-            <li><div><strong>Select its folder</strong><span>Choose the extracted <code>browser-extension</code> folder.</span></div></li>
-            <li><div><strong>Create your account</strong><span>Open the Exelidoc toolbar popup and enter your email. The session is saved in the extension.</span></div></li>
+            <li><div><strong>Install from Chrome Web Store</strong><span>Open the Exelidoc listing and choose Add to Chrome.</span></div></li>
+            <li><div><strong>Open Exelidoc</strong><span>Choose the Exelidoc icon beside Chrome's address bar.</span></div></li>
+            <li><div><strong>Create your free account</strong><span>Enter your email in the extension popup. Your session is saved in Chrome.</span></div></li>
+            <li><div><strong>Use it in Gmail or Google Docs</strong><span>Open a draft or document and ask Exelidoc to help with text.</span></div></li>
           </ol>
         </div>
         <aside class="download-box">
           <h3>Gmail + Google Docs</h3>
-          <p>One extension adds an on-demand writing panel to Gmail compose and Google Docs.</p>
-          <a class="button" href="https://github.com/JensenLawrence11/ExelidocV4-5/archive/refs/heads/main.zip">Download source ZIP</a>
-          <p class="beta-note">Beta note: email ownership is not verified yet, and existing-account sign-in on a fresh install is not available. Use a test email while trying the preview.</p>
+          <p>One Chrome extension adds an on-demand writing panel to Gmail compose and Google Docs.</p>
+          <span class="button store-status" aria-disabled="true">Chrome listing coming soon</span>
+          <p class="beta-note">Free beta: 50 AI requests per 30-day period. Email ownership is not verified yet, and signing into an existing account on a fresh install is not available.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" id="office-preview">
+      <div class="section-inner install-grid">
+        <div>
+          <p class="section-kicker">Separate developer preview</p>
+          <h2 class="section-heading">Office add-in package.</h2>
+          <p class="section-intro">A separate Office add-in manifest is available for sideloading into desktop Office. It is not published in Microsoft AppSource and has not been fully tested by the maintainer.</p>
+          <ol class="install-steps">
+            <li><div><strong>Download and extract</strong><span>Unzip the Office preview package to find its manifest file and setup notes.</span></div></li>
+            <li><div><strong>Upload the manifest in Office</strong><span>In a supported desktop Office app, open the add-ins menu and choose the option to upload a custom add-in manifest.</span></div></li>
+            <li><div><strong>Sign in through Exelidoc</strong><span>Use the same account session as the browser extension. Office functionality may differ and is not guaranteed.</span></div></li>
+          </ol>
+        </div>
+        <aside class="download-box">
+          <h3>Office add-in · untested</h3>
+          <p>This preview is separate from the Chrome extension. Use it only for testing; it is not a one-click Office Store install.</p>
+          <a class="button" href="exelidoc-office-addin-preview.zip" download>Download Office preview ZIP</a>
+          <p class="beta-note">Outlook is not included. Word, Excel, and PowerPoint may not work as expected; they have not been verified for public use.</p>
         </aside>
       </div>
     </section>
@@ -216,7 +238,7 @@
       <div class="section-inner">
         <div class="plans-head">
           <div><p class="section-kicker">One account · your choice</p><h2 class="section-heading">Choose your request limit.</h2></div>
-          <p class="section-intro">Create your free account in the extension first. Use the same email here to upgrade. Paid pricing is shown by Stripe Checkout.</p>
+          <p class="section-intro">Free accounts are created in the extension, not Stripe. Create an account first, then enter that exact email here to start a paid Stripe Checkout subscription. A 409 means the account was not found or already has an active paid plan.</p>
         </div>
         <div class="plan-grid">
           <article class="plan"><span class="plan-name">Free</span><h3>Try Exelidoc</h3><p class="plan-limit">50 AI requests per 30-day period</p><a class="button secondary" href="#install">Install the extension</a></article>
@@ -233,14 +255,14 @@
 
     <section class="section privacy-band" id="privacy">
       <div class="section-inner">
-        <div><p class="section-kicker">Your text, on your instruction</p><h2>Know what gets sent.</h2><p>Text and instructions you submit are sent to Exelidoc's backend and AI provider to fulfill your request. Account details and request usage are also processed. Don't submit sensitive information unless you are authorized to do so.</p></div>
+        <div><p class="section-kicker">Your text, on your instruction</p><h2>Know what gets sent.</h2><p>Text and instructions you submit from the browser extension or Office preview are sent to Exelidoc's backend and AI provider to fulfill your request. Account details and request usage are also processed. Don't submit sensitive information unless you are authorized to do so.</p></div>
         <a href="privacy.html">Read the privacy policy</a>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    <div class="footer-links"><a href="#features">What it does</a><a href="#install">Install</a><a href="#plans">Plans</a><a href="privacy.html">Privacy</a></div>
+    <div class="footer-links"><a href="#features">What it does</a><a href="#install">Chrome install</a><a href="#office-preview">Office preview</a><a href="#plans">Plans</a><a href="privacy.html">Privacy</a></div>
     <p class="copyright">&copy; 2026 Exelidoc</p>
     <p class="site-status">Exelidoc may respond slowly because it relies on free-tier services and is still in development. Availability and response times can vary.</p>
   </footer>
@@ -269,7 +291,13 @@
           });
           const data = await response.json().catch(() => ({}));
           if (!response.ok || !data.url) {
-            billingError.textContent = data.error || "Checkout could not start. Try again shortly.";
+            if (response.status === 409 && data.error?.includes("Create your free account")) {
+              billingError.textContent = "No Exelidoc account was found for that email. Create the free account in the extension first, then try again with that same email.";
+            } else if (response.status === 409 && data.error?.includes("active paid plan")) {
+              billingError.textContent = "This account already has an active paid plan. Plan changes are not supported yet.";
+            } else {
+              billingError.textContent = data.error || "Checkout could not start. Try again shortly.";
+            }
             return;
           }
           window.location.assign(data.url);

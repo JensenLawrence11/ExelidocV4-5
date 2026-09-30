@@ -29,8 +29,9 @@ def create_checkout_session_route():
     email = data.get("customer_email")
     tier = data.get("tier")
 
-    if not email:
+    if not isinstance(email, str) or not email.strip():
         return jsonify(error="customer_email is required"), 400
+    email = email.strip().lower()
     if tier not in PAID_TIERS:
         return jsonify(error=f"tier must be one of {sorted(PAID_TIERS)}"), 400
 

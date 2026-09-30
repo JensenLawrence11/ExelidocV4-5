@@ -4,9 +4,9 @@
   --blue-deep: #1B3F91;
   --blue-pale: #EAF0FD;
   --gray: #7C879C;
-  --font-display: "Space Grotesk", -apple-system, sans-serif;
-  --font-body: "Inter", -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-display: "Segoe UI", Arial, sans-serif;
+  --font-body: "Segoe UI", Arial, sans-serif;
+  --font-mono: Consolas, monospace;
 }
 
 body {

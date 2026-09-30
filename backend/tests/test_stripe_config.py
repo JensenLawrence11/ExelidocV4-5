@@ -60,3 +60,23 @@ def test_paid_checkout_does_not_create_duplicate_active_subscription():
     assert response.status_code == 409
     assert "active paid plan" in response.get_json()["error"]
     create_checkout.assert_not_called()
+
+
+def test_paid_checkout_normalizes_account_email():
+    app = create_app()
+    free_user = {"email": "user@example.com", "tier": "free"}
+
+    with app.test_client() as client:
+        with patch("routes.stripe_routes.get_user_by_email", return_value=free_user) as find_user, patch(
+            "routes.stripe_routes.create_checkout_session",
+            return_value=type("CheckoutSession", (), {"url": "https://checkout.example/session"})(),
+        ) as create_checkout:
+            response = client.post(
+                "/api/stripe/create-checkout-session",
+                json={"customer_email": "  USER@Example.com  ", "tier": "pro"},
+            )
+
+    assert response.status_code == 200
+    assert response.get_json()["url"] == "https://checkout.example/session"
+    find_user.assert_called_once_with("user@example.com")
+    create_checkout.assert_called_once_with(customer_email="user@example.com", tier="pro")
