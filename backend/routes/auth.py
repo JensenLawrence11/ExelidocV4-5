@@ -1,10 +1,46 @@
 """Auth endpoints for remembering a user without exposing a raw API key."""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 
 from services.stripe_service import get_checkout_session
-from services.user_service import get_user_by_email, create_user, ensure_session_token
+from services.history_service import create_link_code, redeem_link_code
+from services.user_service import (
+    get_user_by_email,
+    get_user_by_id,
+    create_user,
+    ensure_session_token,
+)
+from utils.auth_decorator import require_session
 
 auth_bp = Blueprint("auth", __name__)
+
+
+@auth_bp.post("/link-code")
+@require_session
+def link_code():
+    code, expires_at = create_link_code(g.user["id"])
+    return jsonify(code=code, expires_at=expires_at)
+
+
+@auth_bp.post("/redeem-link-code")
+def redeem_office_link_code():
+    data = request.get_json(silent=True) or {}
+    code = data.get("code")
+    if not isinstance(code, str) or not code.strip():
+        return jsonify(error="A connection code is required"), 400
+
+    user_id = redeem_link_code(code)
+    if not user_id:
+        return jsonify(error="Connection code is invalid or expired"), 400
+
+    user = get_user_by_id(user_id)
+    if not user:
+        return jsonify(error="Account not found"), 404
+    session_token = user.get("session_token") or ensure_session_token(user_id)
+    return jsonify(
+        session_token=session_token,
+        email=user["email"],
+        tier=user.get("tier", "free"),
+    )
 
 
 @auth_bp.post("/signup-free")

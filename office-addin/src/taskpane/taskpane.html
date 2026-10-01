@@ -12,10 +12,23 @@
     <div class="subtitle"></div>
 
     <div id="settings">
-      <label for="api-key-input">API key</label>
-      <input type="password" id="api-key-input" placeholder="Paste your Exelidoc key" />
-      <button id="save-key-btn">Save</button>
+      <label for="link-code-input">Connect Chrome account</label>
+      <input id="link-code-input" autocomplete="one-time-code" placeholder="One-time code" />
+      <button id="connect-account-btn">Connect</button>
+      <button id="disconnect-account-btn" hidden>Disconnect</button>
+      <div id="account-status" role="status" aria-live="polite"></div>
     </div>
+
+    <section id="history-section">
+      <div class="history-heading">
+        <strong>Recent history</strong>
+        <button id="refresh-history-btn" type="button" title="Refresh history" aria-label="Refresh history">↻</button>
+      </div>
+      <div class="exelidoc-hint">Prompts and AI replies are saved to your account and shared with linked apps.</div>
+      <div id="history-list" aria-live="polite"></div>
+      <button id="load-more-history-btn" class="secondary-button" type="button" hidden>Load older</button>
+      <button id="clear-history-btn" class="secondary-button" type="button">Clear history</button>
+    </section>
 
     <div id="text-mode">
       <textarea id="instruction" placeholder="e.g. make this more formal, fix grammar... or write something new if nothing is selected"></textarea>

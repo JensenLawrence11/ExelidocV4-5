@@ -57,6 +57,12 @@ def get_user_by_session_token(session_token: str) -> dict | None:
     return result.data[0] if result.data else None
 
 
+def get_user_by_id(user_id: str) -> dict | None:
+    supabase = get_supabase()
+    result = supabase.table("users").select("*").eq("id", user_id).execute()
+    return result.data[0] if result.data else None
+
+
 def ensure_session_token(user_id: str, session_token: str | None = None) -> str:
     token = session_token or generate_session_token()
     supabase = get_supabase()

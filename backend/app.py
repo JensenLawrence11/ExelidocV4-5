@@ -13,6 +13,7 @@ from config import Config
 from routes.ai import ai_bp
 from routes.stripe_routes import stripe_bp
 from routes.auth import auth_bp
+from routes.history import history_bp
 
 
 def _configured_frontend_origins() -> list[str]:
@@ -69,7 +70,7 @@ def create_app():
         origin = request.headers.get("Origin")
         if origin and _is_allowed_origin(origin):
             response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Api-Key, X-Session-Token, Authorization"
             response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Vary"] = "Origin"
@@ -78,6 +79,7 @@ def create_app():
     app.register_blueprint(ai_bp, url_prefix="/api/ai")
     app.register_blueprint(stripe_bp, url_prefix="/api/stripe")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
+    app.register_blueprint(history_bp, url_prefix="/api/history")
 
     @app.get("/api/health")
     def health():

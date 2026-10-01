@@ -19,6 +19,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         body: JSON.stringify({
           text: message.text,
           instruction: message.instruction,
+          client: "chrome",
         }),
       })
         .then(async (res) => {

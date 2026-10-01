@@ -27,6 +27,24 @@
       <p id="billing-status" role="status" aria-live="polite"></p>
     </section>
 
+    <section id="sharing-section" hidden>
+      <h2>Connect Office</h2>
+      <p class="plans-note">Create a one-time code, then enter it in the Exelidoc Office pane. It expires in 10 minutes.</p>
+      <button id="create-link-code-btn">Create connection code</button>
+      <p id="link-code" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="history-section" hidden>
+      <div class="history-heading">
+        <h2>Recent history</h2>
+        <button id="refresh-history-btn" type="button" aria-label="Refresh history" title="Refresh history">↻</button>
+      </div>
+      <p class="plans-note">Prompts and AI replies are saved to your account and shared with linked apps. You can clear them here.</p>
+      <div id="history-list" aria-live="polite"></div>
+      <button id="load-more-history-btn" class="secondary-btn" type="button" hidden>Load older</button>
+      <button id="clear-history-btn" class="secondary-btn" type="button">Clear history</button>
+    </section>
+
   </main>
   <script src="popup.js"></script>
 </body>

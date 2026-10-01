@@ -5,6 +5,7 @@ const SESSION_TOKEN_STORAGE_KEY = "exelidoc_session_token";
 
 let currentHost = null;
 let preEditSnapshot = null; // { kind: "word" | "powerpoint", data: ... } -- used by Undo
+let historyOffset = 0;
 
 Office.onReady((info) => {
   currentHost = info.host;
@@ -39,16 +40,123 @@ Office.onReady((info) => {
 });
 
 function setupSettingsUI() {
-  const input = document.getElementById("api-key-input");
-  input.hidden = true;
-  const saveBtn = document.getElementById("save-key-btn");
-  saveBtn.hidden = true;
-
+  const linkCodeInput = document.getElementById("link-code-input");
+  const connectButton = document.getElementById("connect-account-btn");
+  const disconnectButton = document.getElementById("disconnect-account-btn");
   const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || "";
   if (sessionToken) {
-    setStatus("Signed in and remembered.");
+    setAccountConnected(true);
+    loadHistory();
   } else {
-    setStatus("Sign in once to remember this session.");
+    setAccountConnected(false);
+  }
+
+  connectButton.addEventListener("click", async () => {
+    const code = linkCodeInput.value.trim();
+    if (!code) {
+      setAccountStatus("Enter a connection code from the Chrome extension.");
+      return;
+    }
+    connectButton.disabled = true;
+    setAccountStatus("Connecting...");
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/redeem-link-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.session_token) throw new Error(data.error || "Could not connect account");
+      localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, data.session_token);
+      linkCodeInput.value = "";
+      setAccountConnected(true, data.email);
+      loadHistory();
+    } catch (error) {
+      setAccountStatus(error.message);
+    } finally {
+      connectButton.disabled = false;
+    }
+  });
+
+  disconnectButton.addEventListener("click", () => {
+    localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+    setAccountConnected(false);
+    document.getElementById("history-list").textContent = "Connect your account to view history.";
+  });
+
+  document.getElementById("refresh-history-btn").addEventListener("click", () => loadHistory());
+  document.getElementById("load-more-history-btn").addEventListener("click", () => loadHistory(true));
+  document.getElementById("clear-history-btn").addEventListener("click", clearHistory);
+}
+
+function setAccountConnected(connected, email = "") {
+  document.getElementById("link-code-input").hidden = connected;
+  document.getElementById("connect-account-btn").hidden = connected;
+  document.getElementById("disconnect-account-btn").hidden = !connected;
+  setAccountStatus(connected ? `Connected${email ? ` as ${email}` : ""}.` : "Connect using a code from Chrome.");
+}
+
+function setAccountStatus(text) {
+  document.getElementById("account-status").textContent = text;
+}
+
+function renderHistory(items, append = false) {
+  const list = document.getElementById("history-list");
+  if (!append) list.replaceChildren();
+  if (!items.length) {
+    if (!append) list.textContent = "No saved requests yet.";
+    return;
+  }
+
+  items.forEach((item) => {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `${item.prompt || item.action} · ${item.client} · ${new Date(item.created_at).toLocaleString()}`;
+    const response = document.createElement("pre");
+    response.textContent = JSON.stringify(item.response, null, 2);
+    details.append(summary, response);
+    list.append(details);
+  });
+}
+
+async function loadHistory(append = false) {
+  const list = document.getElementById("history-list");
+  if (!getSessionToken()) {
+    list.textContent = "Connect your account to view history.";
+    return;
+  }
+  if (!append) {
+    historyOffset = 0;
+    list.textContent = "Loading history...";
+  }
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/history?limit=30&offset=${historyOffset}`, {
+      headers: { "X-Session-Token": getSessionToken() },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not load history");
+    renderHistory(data.history || [], append);
+    historyOffset += (data.history || []).length;
+    document.getElementById("load-more-history-btn").hidden = !data.has_more;
+  } catch (error) {
+    list.textContent = error.message;
+  }
+}
+
+async function clearHistory() {
+  if (!getSessionToken()) return;
+  if (!window.confirm("Delete all saved AI history from this account?")) return;
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/history`, {
+      method: "DELETE",
+      headers: { "X-Session-Token": getSessionToken() },
+    });
+    if (!response.ok) throw new Error("Could not clear history");
+    renderHistory([]);
+    historyOffset = 0;
+    document.getElementById("load-more-history-btn").hidden = true;
+  } catch (error) {
+    document.getElementById("history-list").textContent = error.message;
   }
 }
 
@@ -88,7 +196,7 @@ async function callBackend(path, payload) {
       "Content-Type": "application/json",
       "X-Session-Token": sessionToken,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, client: "office" }),
   });
 
   if (res.status === 401) throw new Error("invalid_session");

@@ -6,6 +6,63 @@ const createAccountBtn = document.getElementById("create-account-btn");
 const signOutBtn = document.getElementById("sign-out-btn");
 const plansSection = document.getElementById("plans-section");
 const billingStatus = document.getElementById("billing-status");
+const sharingSection = document.getElementById("sharing-section");
+const historySection = document.getElementById("history-section");
+const historyList = document.getElementById("history-list");
+const linkCodeStatus = document.getElementById("link-code");
+const loadMoreHistoryButton = document.getElementById("load-more-history-btn");
+let historyOffset = 0;
+
+async function sessionFetch(path, options = {}) {
+  const { sessionToken } = await chrome.storage.local.get("sessionToken");
+  if (!sessionToken) throw new Error("no_session");
+  return fetch(`${BACKEND_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-Token": sessionToken,
+      ...(options.headers || {}),
+    },
+  });
+}
+
+function renderHistory(items, append = false) {
+  if (!append) historyList.replaceChildren();
+  if (!items.length) {
+    if (!append) historyList.textContent = "No saved requests yet.";
+    return;
+  }
+
+  items.forEach((item) => {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `${item.prompt || item.action} · ${item.client} · ${new Date(item.created_at).toLocaleString()}`;
+    const prompt = document.createElement("p");
+    prompt.className = "history-prompt";
+    prompt.textContent = item.prompt || "";
+    const response = document.createElement("pre");
+    response.textContent = JSON.stringify(item.response, null, 2);
+    details.append(summary, prompt, response);
+    historyList.append(details);
+  });
+}
+
+async function loadHistory(append = false) {
+  if (!append) {
+    historyOffset = 0;
+    historyList.textContent = "Loading history...";
+  }
+  try {
+    const response = await sessionFetch(`/api/history?limit=30&offset=${historyOffset}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not load history");
+    renderHistory(data.history || [], append);
+    historyOffset += (data.history || []).length;
+    loadMoreHistoryButton.hidden = !data.has_more;
+  } catch (error) {
+    historyList.textContent = error.message === "no_session" ? "Sign in to view history." : error.message;
+  }
+}
 
 function setSignedIn(email) {
   emailInput.value = email || "";
@@ -13,6 +70,8 @@ function setSignedIn(email) {
   createAccountBtn.hidden = Boolean(email);
   signOutBtn.hidden = !email;
   plansSection.hidden = !email;
+  sharingSection.hidden = !email;
+  historySection.hidden = !email;
   status.textContent = email
     ? `Signed in as ${email}. Your account is remembered in this browser.`
     : "Create an account to use Exelidoc. Free accounts include 50 AI requests per 30 days.";
@@ -20,6 +79,39 @@ function setSignedIn(email) {
 
 chrome.storage.local.get(["sessionToken", "accountEmail"], (result) => {
   setSignedIn(result.sessionToken ? result.accountEmail : "");
+  if (result.sessionToken) loadHistory();
+});
+
+document.getElementById("create-link-code-btn").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  linkCodeStatus.textContent = "Creating code...";
+  try {
+    const response = await sessionFetch("/api/auth/link-code", { method: "POST", body: "{}" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not create a code");
+    linkCodeStatus.textContent = `Enter this code in Office: ${data.code}`;
+  } catch (error) {
+    linkCodeStatus.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById("refresh-history-btn").addEventListener("click", () => loadHistory());
+loadMoreHistoryButton.addEventListener("click", () => loadHistory(true));
+
+document.getElementById("clear-history-btn").addEventListener("click", async () => {
+  if (!window.confirm("Delete all saved AI history from this account?")) return;
+  try {
+    const response = await sessionFetch("/api/history", { method: "DELETE" });
+    if (!response.ok) throw new Error("Could not clear history");
+    renderHistory([]);
+    historyOffset = 0;
+    loadMoreHistoryButton.hidden = true;
+  } catch (error) {
+    historyList.textContent = error.message;
+  }
 });
 
 createAccountBtn.addEventListener("click", async () => {
@@ -50,6 +142,8 @@ createAccountBtn.addEventListener("click", async () => {
 
     chrome.storage.local.set({ sessionToken: data.session_token, accountEmail: data.email }, () => {
       setSignedIn(data.email);
+      historyOffset = 0;
+      loadHistory();
     });
   } catch (error) {
     console.error("Exelidoc: account signup failed --", error);

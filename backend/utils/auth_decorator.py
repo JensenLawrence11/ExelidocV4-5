@@ -25,6 +25,29 @@ def _extract_session_token():
     return None
 
 
+def require_session(fn):
+    """Authenticate a user without checking subscription or consuming quota."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        token = _extract_session_token()
+        if not token:
+            return jsonify(error="Missing session token"), 401
+
+        try:
+            user = get_user_by_session_token(token) or get_user_by_api_key(token)
+        except Exception as e:
+            print(f"require_session: Supabase lookup failed -- {e}")
+            return jsonify(error="Backend service unavailable, try again shortly"), 503
+
+        if not user:
+            return jsonify(error="Invalid session"), 401
+
+        g.user = user
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def require_subscription(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):

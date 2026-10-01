@@ -30,6 +30,18 @@ class CorsExtensionOriginTests(unittest.TestCase):
 
         self.assertIn("X-Session-Token", response.headers["Access-Control-Allow-Headers"])
 
+    def test_extension_preflight_allows_history_delete(self):
+        response = self.client.options(
+            "/api/history",
+            headers={
+                "Origin": "chrome-extension://random-extension-id-123",
+                "Access-Control-Request-Method": "DELETE",
+                "Access-Control-Request-Headers": "x-session-token",
+            },
+        )
+
+        self.assertIn("DELETE", response.headers["Access-Control-Allow-Methods"])
+
     def test_configured_public_app_url_allows_checkout_preflight(self):
         with patch("app.Config.APP_PUBLIC_URL", "https://exelidoc.netlify.app"), patch(
             "app.Config.FRONTEND_ORIGINS", ["chrome-extension://test-extension"]

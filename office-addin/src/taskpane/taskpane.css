@@ -25,10 +25,15 @@ body {
 
 #settings {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   padding-bottom: 8px;
   border-bottom: 1px solid #eee;
+}
+
+#settings label {
+  width: 100%;
 }
 
 #settings input {
@@ -37,6 +42,53 @@ body {
   border: 1px solid #d1d1d1;
   border-radius: 4px;
   font: inherit;
+}
+
+#account-status {
+  width: 100%;
+  color: #605e5c;
+  font-size: 11px;
+}
+
+#history-section {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+#refresh-history-btn {
+  padding: 2px 8px;
+}
+
+#history-list details {
+  padding: 7px 0;
+  border-top: 1px solid #eee;
+  font-size: 11px;
+}
+
+#history-list summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+#history-list pre {
+  max-height: 130px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 10px Consolas, monospace;
+}
+
+.secondary-button {
+  background: #fff;
+  color: #2b579a;
+  border: 1px solid #2b579a;
 }
 
 textarea {

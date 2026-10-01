@@ -6,10 +6,27 @@ never touch the AI provider directly -- the API key stays server-side.
 from flask import Blueprint, request, jsonify, g
 
 from services.ai_service import analyze_text, analyze_spreadsheet_range, generate_text
+from services.history_service import save_conversation
 from services.user_service import log_ai_usage
 from utils.auth_decorator import require_subscription
 
 ai_bp = Blueprint("ai", __name__)
+
+
+def _save_history(action, prompt, result):
+    if result.get("error"):
+        return
+    try:
+        data = request.get_json(silent=True) or {}
+        save_conversation(
+            g.user["id"],
+            data.get("client", "unknown"),
+            action,
+            prompt,
+            dict(result),
+        )
+    except Exception as e:
+        print(f"{action}: save_conversation failed -- {e}")
 
 
 @ai_bp.post("/generate-text")
@@ -29,6 +46,7 @@ def generate_text_route():
         return jsonify(error="No prompt provided"), 400
 
     result = generate_text(prompt)
+    _save_history("generate-text", prompt, result)
     try:
         log_ai_usage(g.user["id"], "generate-text")
     except Exception as e:
@@ -57,6 +75,7 @@ def analyze_text_route():
         return jsonify(error="No text provided"), 400
 
     result = analyze_text(text, instruction)
+    _save_history("analyze-text", instruction or "Analyze selected text", result)
     try:
         log_ai_usage(g.user["id"], "analyze-text")
     except Exception as e:
@@ -83,6 +102,7 @@ def analyze_range_route():
         return jsonify(error="Range values must be a 2D array"), 400
 
     result = analyze_spreadsheet_range(values)
+    _save_history("analyze-range", "Clean up selected Excel range", result)
     try:
         log_ai_usage(g.user["id"], "analyze-range")
     except Exception as e:
