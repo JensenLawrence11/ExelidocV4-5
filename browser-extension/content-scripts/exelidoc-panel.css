@@ -98,3 +98,80 @@
   font-size: 12px;
   min-height: 14px;
 }
+
+.exelidoc-history {
+  border-top: 1px solid #dadce0;
+  padding-top: 6px;
+}
+
+.exelidoc-history > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.exelidoc-history > summary::-webkit-details-marker {
+  display: none;
+}
+
+.exelidoc-history > summary::after {
+  content: "▾";
+  font-size: 14px;
+}
+
+.exelidoc-history[open] > summary::after {
+  content: "▴";
+}
+
+.exelidoc-history-content {
+  max-height: 260px;
+  overflow: auto;
+  padding-top: 8px;
+}
+
+.exelidoc-history-status,
+.exelidoc-history-meta {
+  color: #5f6368;
+  font-size: 11px;
+}
+
+.exelidoc-history-item {
+  border-top: 1px solid #eee;
+  padding: 8px 0;
+}
+
+.exelidoc-history-mention {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.exelidoc-history-prompt {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.exelidoc-history-exchange > summary {
+  color: #1a73e8;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.exelidoc-history-exchange pre {
+  max-height: 100px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 10px Consolas, monospace;
+}
+
+.exelidoc-history-more {
+  font-size: 11px;
+  padding: 5px 9px;
+}

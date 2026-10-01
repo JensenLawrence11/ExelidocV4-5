@@ -6,6 +6,7 @@ const SESSION_TOKEN_STORAGE_KEY = "exelidoc_session_token";
 let currentHost = null;
 let preEditSnapshot = null; // { kind: "word" | "powerpoint", data: ... } -- used by Undo
 let historyOffset = 0;
+const MAX_MENTIONED_HISTORY_ITEMS = 5;
 
 Office.onReady((info) => {
   currentHost = info.host;
@@ -46,7 +47,6 @@ function setupSettingsUI() {
   const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || "";
   if (sessionToken) {
     setAccountConnected(true);
-    loadHistory();
   } else {
     setAccountConnected(false);
   }
@@ -70,7 +70,6 @@ function setupSettingsUI() {
       localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, data.session_token);
       linkCodeInput.value = "";
       setAccountConnected(true, data.email);
-      loadHistory();
     } catch (error) {
       setAccountStatus(error.message);
     } finally {
@@ -84,6 +83,9 @@ function setupSettingsUI() {
     document.getElementById("history-list").textContent = "Connect your account to view history.";
   });
 
+  document.getElementById("history-section").addEventListener("toggle", (event) => {
+    if (event.currentTarget.open) loadHistory();
+  });
   document.getElementById("refresh-history-btn").addEventListener("click", () => loadHistory());
   document.getElementById("load-more-history-btn").addEventListener("click", () => loadHistory(true));
   document.getElementById("clear-history-btn").addEventListener("click", clearHistory);
@@ -102,6 +104,10 @@ function setAccountStatus(text) {
 
 function renderHistory(items, append = false) {
   const list = document.getElementById("history-list");
+  const selectedIds = new Set(
+    Array.from(list.querySelectorAll(".history-mention-checkbox:checked"))
+      .map((checkbox) => checkbox.value)
+  );
   if (!append) list.replaceChildren();
   if (!items.length) {
     if (!append) list.textContent = "No saved requests yet.";
@@ -109,14 +115,43 @@ function renderHistory(items, append = false) {
   }
 
   items.forEach((item) => {
+    const row = document.createElement("article");
+    row.className = "history-item";
+    const mentionLabel = document.createElement("label");
+    mentionLabel.className = "history-mention";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "history-mention-checkbox";
+    checkbox.value = item.id;
+    checkbox.checked = selectedIds.has(item.id);
+    checkbox.addEventListener("change", () => {
+      const selected = list.querySelectorAll(".history-mention-checkbox:checked");
+      if (selected.length > MAX_MENTIONED_HISTORY_ITEMS) {
+        checkbox.checked = false;
+        setStatus(`Choose up to ${MAX_MENTIONED_HISTORY_ITEMS} history items to mention.`);
+      }
+    });
+    const checkboxLabel = document.createElement("span");
+    checkboxLabel.textContent = "Mention in chat";
+    mentionLabel.append(checkbox, checkboxLabel);
+
+    const prompt = document.createElement("div");
+    prompt.className = "history-prompt";
+    prompt.textContent = item.prompt || item.action;
+    const metadata = document.createElement("div");
+    metadata.className = "history-meta";
+    metadata.textContent = `${item.client} · ${new Date(item.created_at).toLocaleString()}`;
+
     const details = document.createElement("details");
     const summary = document.createElement("summary");
-    summary.textContent = `${item.prompt || item.action} · ${item.client} · ${new Date(item.created_at).toLocaleString()}`;
+    summary.textContent = "View reply";
     const response = document.createElement("pre");
     response.textContent = JSON.stringify(item.response, null, 2);
     details.append(summary, response);
-    list.append(details);
+    row.append(mentionLabel, prompt, metadata, details);
+    list.append(row);
   });
+
 }
 
 async function loadHistory(append = false) {
@@ -196,7 +231,11 @@ async function callBackend(path, payload) {
       "Content-Type": "application/json",
       "X-Session-Token": sessionToken,
     },
-    body: JSON.stringify({ ...payload, client: "office" }),
+    body: JSON.stringify({
+      ...payload,
+      client: "office",
+      history_ids: getSelectedHistoryIds(),
+    }),
   });
 
   if (res.status === 401) throw new Error("invalid_session");
@@ -205,7 +244,14 @@ async function callBackend(path, payload) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `request_failed (${res.status})`);
   }
-  return res.json();
+  const result = await res.json();
+  if (document.getElementById("history-section").open) loadHistory();
+  return result;
+}
+
+function getSelectedHistoryIds() {
+  return Array.from(document.querySelectorAll(".history-mention-checkbox:checked"))
+    .map((checkbox) => checkbox.value);
 }
 
 // ---------------------------------------------------------------------------

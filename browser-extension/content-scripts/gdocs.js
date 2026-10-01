@@ -110,6 +110,7 @@ function createExelidocPanel() {
   const undoEl = panel.querySelector(".exelidoc-undo");
   const statusEl = panel.querySelector(".exelidoc-status");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
+  const history = window.ExelidocHistory.mount(panel);
 
   let dragState = null;
   panelHeader.addEventListener("pointerdown", (event) => {
@@ -151,7 +152,7 @@ function createExelidocPanel() {
     submitEl.disabled = true;
 
     chrome.runtime.sendMessage(
-      { type: "ANALYZE_TEXT", text, instruction },
+      { type: "ANALYZE_TEXT", text, instruction, historyIds: history.selectedIds() },
       (response) => {
         submitEl.disabled = false;
         if (chrome.runtime.lastError) {
@@ -168,6 +169,7 @@ function createExelidocPanel() {
           statusEl.textContent = `Error: ${response.data.error}`;
           return;
         }
+        history.refresh();
         if (!activeBox) return;
 
         statusEl.textContent = "";

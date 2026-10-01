@@ -72,7 +72,13 @@ TEXT_SYSTEM_PROMPT = (
 )
 
 
-def analyze_text(text: str, instruction: str | None = None) -> dict:
+def _add_context(user_content: str, context: str | None) -> str:
+    if not context:
+        return user_content
+    return f"{context}\n\nCurrent request:\n{user_content}"
+
+
+def analyze_text(text: str, instruction: str | None = None, context: str | None = None) -> dict:
     try:
         if len(text) > Config.AI_MAX_TEXT_CHARS or len(instruction or "") > Config.AI_MAX_TEXT_CHARS:
             return {"corrected": text, "suggestions": [], "error": "Text is too large to analyze"}
@@ -80,7 +86,7 @@ def analyze_text(text: str, instruction: str | None = None) -> dict:
         if not text or not text.strip():
             if not instruction or not instruction.strip():
                 return {"corrected": "", "suggestions": []}
-            generated = generate_text(instruction)
+            generated = generate_text(instruction, context=context)
             return {
                 "corrected": generated.get("generated", ""),
                 "suggestions": [],
@@ -91,6 +97,7 @@ def analyze_text(text: str, instruction: str | None = None) -> dict:
             if instruction
             else text
         )
+        user_content = _add_context(user_content, context)
         raw = _call_openrouter(TEXT_SYSTEM_PROMPT, user_content)
         if raw is None:
             return {"corrected": text, "suggestions": []}
@@ -120,12 +127,12 @@ GENERATE_SYSTEM_PROMPT = (
 )
 
 
-def generate_text(prompt: str) -> dict:
+def generate_text(prompt: str, context: str | None = None) -> dict:
     try:
         if len(prompt) > Config.AI_MAX_TEXT_CHARS:
             return {"generated": "", "error": "Prompt is too large to process"}
 
-        raw = _call_openrouter(GENERATE_SYSTEM_PROMPT, prompt)
+        raw = _call_openrouter(GENERATE_SYSTEM_PROMPT, _add_context(prompt, context))
         if raw is None:
             return {"generated": "", "error": "AI provider not configured"}
         parsed = _extract_json(raw)
@@ -160,7 +167,7 @@ def _is_formula_or_number(cell) -> bool:
     return False
 
 
-def analyze_spreadsheet_range(values: list) -> dict:
+def analyze_spreadsheet_range(values: list, context: str | None = None) -> dict:
     cell_count = sum(len(row) for row in values if isinstance(row, list))
     if cell_count > Config.AI_MAX_RANGE_CELLS:
         return {"correctedValues": values, "notes": [], "error": "Selected range is too large to analyze"}
@@ -177,7 +184,8 @@ def analyze_spreadsheet_range(values: list) -> dict:
         return {"correctedValues": values, "notes": []}
 
     try:
-        raw = _call_openrouter(RANGE_SYSTEM_PROMPT, json.dumps(editable_cells))
+        user_content = _add_context(json.dumps(editable_cells), context)
+        raw = _call_openrouter(RANGE_SYSTEM_PROMPT, user_content)
         if raw is None:
             return {"correctedValues": values, "notes": []}
 

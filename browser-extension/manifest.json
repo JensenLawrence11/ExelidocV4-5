@@ -22,13 +22,13 @@
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
-      "js": ["content-scripts/gmail.js"],
+      "js": ["content-scripts/history-panel.js", "content-scripts/gmail.js"],
       "css": ["content-scripts/exelidoc-panel.css"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://docs.google.com/document/*"],
-      "js": ["content-scripts/gdocs.js"],
+      "js": ["content-scripts/history-panel.js", "content-scripts/gdocs.js"],
       "css": ["content-scripts/exelidoc-panel.css"],
       "run_at": "document_idle"
     }

@@ -6,7 +6,7 @@ never touch the AI provider directly -- the API key stays server-side.
 from flask import Blueprint, request, jsonify, g
 
 from services.ai_service import analyze_text, analyze_spreadsheet_range, generate_text
-from services.history_service import save_conversation
+from services.history_service import build_selected_context, save_conversation
 from services.user_service import log_ai_usage
 from utils.auth_decorator import require_subscription
 
@@ -29,6 +29,13 @@ def _save_history(action, prompt, result):
         print(f"{action}: save_conversation failed -- {e}")
 
 
+def _get_selected_context(data):
+    history_ids = data.get("history_ids", [])
+    if not isinstance(history_ids, list):
+        raise ValueError("history_ids must be a list")
+    return build_selected_context(g.user["id"], history_ids)
+
+
 @ai_bp.post("/generate-text")
 @require_subscription
 def generate_text_route():
@@ -45,7 +52,12 @@ def generate_text_route():
     if not prompt.strip():
         return jsonify(error="No prompt provided"), 400
 
-    result = generate_text(prompt)
+    try:
+        context = _get_selected_context(data)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
+    result = generate_text(prompt, context=context)
     _save_history("generate-text", prompt, result)
     try:
         log_ai_usage(g.user["id"], "generate-text")
@@ -74,7 +86,12 @@ def analyze_text_route():
     if not text.strip() and not instruction.strip():
         return jsonify(error="No text provided"), 400
 
-    result = analyze_text(text, instruction)
+    try:
+        context = _get_selected_context(data)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
+    result = analyze_text(text, instruction, context=context)
     _save_history("analyze-text", instruction or "Analyze selected text", result)
     try:
         log_ai_usage(g.user["id"], "analyze-text")
@@ -101,7 +118,12 @@ def analyze_range_route():
     if not isinstance(values, list) or any(not isinstance(row, list) for row in values):
         return jsonify(error="Range values must be a 2D array"), 400
 
-    result = analyze_spreadsheet_range(values)
+    try:
+        context = _get_selected_context(data)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
+    result = analyze_spreadsheet_range(values, context=context)
     _save_history("analyze-range", "Clean up selected Excel range", result)
     try:
         log_ai_usage(g.user["id"], "analyze-range")

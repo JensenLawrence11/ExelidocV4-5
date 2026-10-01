@@ -17,18 +17,8 @@
       <button id="connect-account-btn">Connect</button>
       <button id="disconnect-account-btn" hidden>Disconnect</button>
       <div id="account-status" role="status" aria-live="polite"></div>
+      <div class="exelidoc-hint">Create this one-time code in the Chrome extension to link both apps to the same account. It expires in 10 minutes, works once, and is not your password.</div>
     </div>
-
-    <section id="history-section">
-      <div class="history-heading">
-        <strong>Recent history</strong>
-        <button id="refresh-history-btn" type="button" title="Refresh history" aria-label="Refresh history">↻</button>
-      </div>
-      <div class="exelidoc-hint">Prompts and AI replies are saved to your account and shared with linked apps.</div>
-      <div id="history-list" aria-live="polite"></div>
-      <button id="load-more-history-btn" class="secondary-button" type="button" hidden>Load older</button>
-      <button id="clear-history-btn" class="secondary-button" type="button">Clear history</button>
-    </section>
 
     <div id="text-mode">
       <textarea id="instruction" placeholder="e.g. make this more formal, fix grammar... or write something new if nothing is selected"></textarea>
@@ -44,6 +34,18 @@
     <button id="undo" hidden>Undo</button>
     <div id="status"></div>
     <div id="notes"></div>
+    <details id="history-section">
+      <summary>History</summary>
+      <div class="history-content">
+        <div class="history-heading">
+          <span class="exelidoc-hint">Saved prompts and replies shared with linked apps.</span>
+          <button id="refresh-history-btn" type="button" title="Refresh history" aria-label="Refresh history">↻</button>
+        </div>
+        <div id="history-list" aria-live="polite"></div>
+        <button id="load-more-history-btn" class="secondary-button" type="button" hidden>Load older</button>
+        <button id="clear-history-btn" class="secondary-button" type="button">Clear history</button>
+      </div>
+    </details>
   </div>
   <script src="taskpane.js"></script>
 </body>

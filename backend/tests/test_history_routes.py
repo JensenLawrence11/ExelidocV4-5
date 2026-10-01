@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from app import create_app
+from services.history_service import build_selected_context
 
 
 USER = {"id": "user-1", "email": "user@example.com", "tier": "free"}
@@ -76,16 +77,49 @@ def test_successful_ai_request_is_saved_to_account_history():
         "utils.auth_decorator.get_user_by_session_token", return_value=USER
     ), patch("utils.auth_decorator.has_access", return_value=True), patch(
         "utils.auth_decorator.check_and_consume_quota", return_value=(True, 49)
-    ), patch("routes.ai.generate_text", return_value={"generated": "A concise reply."}), patch(
+    ), patch("routes.ai.build_selected_context", return_value="Earlier selected exchange") as get_context, patch(
+        "routes.ai.generate_text", return_value={"generated": "A concise reply."}
+    ) as generate, patch(
         "routes.ai.save_conversation"
     ) as save_history, patch("routes.ai.log_ai_usage"):
         response = client.post(
             "/api/ai/generate-text",
-            json={"prompt": "Draft a reply", "client": "chrome"},
+            json={"prompt": "Draft a reply", "client": "chrome", "history_ids": ["history-1"]},
             headers={"X-Session-Token": "session-1"},
         )
 
     assert response.status_code == 200
+    get_context.assert_called_once_with("user-1", ["history-1"])
+    generate.assert_called_once_with("Draft a reply", context="Earlier selected exchange")
     save_history.assert_called_once_with(
         "user-1", "chrome", "generate-text", "Draft a reply", {"generated": "A concise reply."}
     )
+
+
+def test_selected_history_context_is_owner_scoped_and_formatted():
+    saved_item = {
+        "id": "history-1",
+        "prompt": "Use a friendly tone",
+        "response": {"generated": "Hello there"},
+        "created_at": "2026-10-01T00:00:00Z",
+    }
+    with patch("services.history_service.get_supabase") as get_supabase:
+        query = get_supabase.return_value.table.return_value.select.return_value
+        query.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = [saved_item]
+        context = build_selected_context("user-1", ["00000000-0000-0000-0000-000000000001"])
+
+    query.eq.assert_called_once_with("user_id", "user-1")
+    assert "Use a friendly tone" in context
+    assert "Hello there" in context
+
+
+def test_selected_history_context_limits_entries_before_database_lookup():
+    with patch("services.history_service.get_supabase") as get_supabase:
+        try:
+            build_selected_context("user-1", ["entry"] * 6)
+        except ValueError as error:
+            assert "no more than 5" in str(error)
+        else:
+            raise AssertionError("Expected the selected history limit to be enforced")
+
+    get_supabase.assert_not_called()
