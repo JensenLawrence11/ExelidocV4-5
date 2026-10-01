@@ -103,6 +103,14 @@ function createExelidocPanel() {
     <button class="exelidoc-submit">Ask</button>
     <button class="exelidoc-undo" hidden>Undo</button>
     <div class="exelidoc-status"></div>
+    <details class="exelidoc-history">
+      <summary>History</summary>
+      <div class="exelidoc-history-content">
+        <div class="exelidoc-history-status" role="status" aria-live="polite"></div>
+        <div class="exelidoc-history-list"></div>
+        <button class="exelidoc-history-more" type="button" hidden>Load older</button>
+      </div>
+    </details>
   `;
 
   const queryEl = panel.querySelector(".exelidoc-query");
@@ -110,7 +118,12 @@ function createExelidocPanel() {
   const undoEl = panel.querySelector(".exelidoc-undo");
   const statusEl = panel.querySelector(".exelidoc-status");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
-  const history = window.ExelidocHistory.mount(panel);
+  const history = window.ExelidocHistory
+    ? window.ExelidocHistory.mount(panel)
+    : { selectedIds: () => [], refresh: () => {} };
+  if (!window.ExelidocHistory) {
+    panel.querySelector(".exelidoc-history-status").textContent = "History helper not loaded. Reload Exelidoc from its updated extension folder.";
+  }
 
   let dragState = null;
   panelHeader.addEventListener("pointerdown", (event) => {
@@ -161,7 +174,7 @@ function createExelidocPanel() {
         }
         if (!response || !response.ok) {
           statusEl.textContent = response && response.error === "no_session"
-            ? "Open the Exelidoc toolbar popup to create your account first."
+            ? "Sign in to Exelidoc from the toolbar popup first."
             : `Error: ${response ? response.error : "no response"}`;
           return;
         }

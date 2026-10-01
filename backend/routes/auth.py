@@ -2,45 +2,16 @@
 from flask import Blueprint, request, jsonify, g
 
 from services.stripe_service import get_checkout_session
-from services.history_service import create_link_code, redeem_link_code
 from services.user_service import (
     get_user_by_email,
-    get_user_by_id,
     create_user,
     ensure_session_token,
+    password_matches,
+    set_user_password,
 )
 from utils.auth_decorator import require_session
 
 auth_bp = Blueprint("auth", __name__)
-
-
-@auth_bp.post("/link-code")
-@require_session
-def link_code():
-    code, expires_at = create_link_code(g.user["id"])
-    return jsonify(code=code, expires_at=expires_at)
-
-
-@auth_bp.post("/redeem-link-code")
-def redeem_office_link_code():
-    data = request.get_json(silent=True) or {}
-    code = data.get("code")
-    if not isinstance(code, str) or not code.strip():
-        return jsonify(error="A connection code is required"), 400
-
-    user_id = redeem_link_code(code)
-    if not user_id:
-        return jsonify(error="Connection code is invalid or expired"), 400
-
-    user = get_user_by_id(user_id)
-    if not user:
-        return jsonify(error="Account not found"), 404
-    session_token = user.get("session_token") or ensure_session_token(user_id)
-    return jsonify(
-        session_token=session_token,
-        email=user["email"],
-        tier=user.get("tier", "free"),
-    )
 
 
 @auth_bp.post("/signup-free")
@@ -48,24 +19,55 @@ def signup_free():
     """
     Free tier provisioning -- no Stripe involved at all. Called directly
     from the website when someone picks the free plan.
-    Body: { "email": "..." }
+    Body: { "email": "...", "password": "..." }
     Returns: { "session_token": "...", "email": "...", "tier": "free" }
     """
     data = request.get_json(silent=True) or {}
     email = data.get("email")
     if not isinstance(email, str) or not email.strip():
         return jsonify(error="email is required"), 400
+    password = data.get("password")
+    if not isinstance(password, str) or len(password) < 8 or len(password) > 128:
+        return jsonify(error="Password must be between 8 and 128 characters"), 400
 
     email = email.strip().lower()
     user = get_user_by_email(email)
     if user:
         return jsonify(error="An account already exists for this email."), 409
 
-    user = create_user(email, tier="free")
+    user = create_user(email, tier="free", password=password)
 
     session_token = user.get("session_token") or ensure_session_token(user["id"])
 
     return jsonify(session_token=session_token, email=user["email"], tier=user.get("tier", "free"))
+
+
+@auth_bp.post("/login")
+def login():
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+    password = data.get("password")
+    if not isinstance(email, str) or not email.strip() or not isinstance(password, str):
+        return jsonify(error="Email and password are required"), 400
+
+    user = get_user_by_email(email.strip().lower())
+    if not user or not password_matches(password, user.get("password_hash")):
+        return jsonify(error="Invalid email or password"), 401
+
+    session_token = user.get("session_token") or ensure_session_token(user["id"])
+    return jsonify(session_token=session_token, email=user["email"], tier=user.get("tier", "free"))
+
+
+@auth_bp.post("/set-password")
+@require_session
+def set_password():
+    data = request.get_json(silent=True) or {}
+    password = data.get("password")
+    if not isinstance(password, str) or len(password) < 8 or len(password) > 128:
+        return jsonify(error="Password must be between 8 and 128 characters"), 400
+
+    set_user_password(g.user["id"], password)
+    return jsonify(ok=True)
 
 
 @auth_bp.get("/key-for-session")
@@ -88,5 +90,4 @@ def key_for_session():
     if not user:
         return jsonify(error="No account found for this session"), 404
 
-    session_token = user.get("session_token") or ensure_session_token(user["id"])
-    return jsonify(session_token=session_token, email=user["email"], tier=user.get("tier", "free"))
+    return jsonify(email=user["email"], tier=user.get("tier", "free"))

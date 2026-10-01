@@ -36,8 +36,20 @@ body {
   width: 100%;
 }
 
+#account-access, #account-session {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+#account-access[hidden], #account-session[hidden] {
+  display: none;
+}
+
 #settings input {
   flex: 1;
+  min-width: 100%;
   padding: 5px 8px;
   border: 1px solid #d1d1d1;
   border-radius: 4px;
@@ -48,10 +60,6 @@ body {
   width: 100%;
   color: #605e5c;
   font-size: 11px;
-}
-
-#settings .exelidoc-hint {
-  flex-basis: 100%;
 }
 
 #history-section {

@@ -21,17 +21,7 @@
   }
 
   function mount(panel) {
-    const drawer = document.createElement("details");
-    drawer.className = "exelidoc-history";
-    drawer.innerHTML = `
-      <summary>History</summary>
-      <div class="exelidoc-history-content">
-        <div class="exelidoc-history-status" role="status" aria-live="polite"></div>
-        <div class="exelidoc-history-list"></div>
-        <button class="exelidoc-history-more" type="button" hidden>Load older</button>
-      </div>
-    `;
-    panel.appendChild(drawer);
+    const drawer = panel.querySelector(".exelidoc-history");
 
     const status = drawer.querySelector(".exelidoc-history-status");
     const list = drawer.querySelector(".exelidoc-history-list");
@@ -94,7 +84,6 @@
         row.append(mention, prompt, metadata, exchange);
         list.appendChild(row);
       });
-
     }
 
     async function load(append = false) {

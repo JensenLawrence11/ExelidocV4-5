@@ -41,50 +41,18 @@ Office.onReady((info) => {
 });
 
 function setupSettingsUI() {
-  const linkCodeInput = document.getElementById("link-code-input");
-  const connectButton = document.getElementById("connect-account-btn");
-  const disconnectButton = document.getElementById("disconnect-account-btn");
-  const createLinkCodeButton = document.getElementById("create-link-code-btn");
   const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || "";
-  if (sessionToken) {
-    setAccountConnected(true);
-  } else {
-    setAccountConnected(false);
-  }
+  setAccountConnected(Boolean(sessionToken), localStorage.getItem("exelidoc_account_email") || "");
 
-  connectButton.addEventListener("click", async () => {
-    const code = linkCodeInput.value.trim();
-    if (!code) {
-      setAccountStatus("Enter a connection code from the Chrome extension.");
-      return;
-    }
-    connectButton.disabled = true;
-    setAccountStatus("Connecting...");
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/redeem-link-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.session_token) throw new Error(data.error || "Could not connect account");
-      localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, data.session_token);
-      linkCodeInput.value = "";
-      setAccountConnected(true, data.email);
-    } catch (error) {
-      setAccountStatus(error.message);
-    } finally {
-      connectButton.disabled = false;
-    }
-  });
-
-  disconnectButton.addEventListener("click", () => {
+  document.getElementById("sign-in-btn").addEventListener("click", () => submitOfficeAuth("login"));
+  document.getElementById("create-account-btn").addEventListener("click", () => submitOfficeAuth("signup-free"));
+  document.getElementById("sign-out-btn").addEventListener("click", () => {
     localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+    localStorage.removeItem("exelidoc_account_email");
     setAccountConnected(false);
-    document.getElementById("history-list").textContent = "Connect your account to view history.";
+    document.getElementById("history-list").textContent = "Sign in to view history.";
   });
-
-  createLinkCodeButton.addEventListener("click", createOfficeLinkCode);
+  document.getElementById("save-password-btn").addEventListener("click", saveOfficePassword);
 
   document.getElementById("history-section").addEventListener("toggle", (event) => {
     if (event.currentTarget.open) loadHistory();
@@ -95,28 +63,63 @@ function setupSettingsUI() {
 }
 
 function setAccountConnected(connected, email = "") {
-  document.getElementById("link-code-input").hidden = connected;
-  document.getElementById("connect-account-btn").hidden = connected;
-  document.getElementById("disconnect-account-btn").hidden = !connected;
-  document.getElementById("create-link-code-btn").hidden = !connected;
-  setAccountStatus(connected ? `Connected${email ? ` as ${email}` : ""}.` : "Connect using a code from Chrome.");
+  document.getElementById("account-access").hidden = connected;
+  document.getElementById("account-session").hidden = !connected;
+  setAccountStatus(connected ? `Signed in${email ? ` as ${email}` : ""}.` : "Sign in or create an account to sync your history.");
 }
 
-async function createOfficeLinkCode(event) {
-  const button = event.currentTarget;
-  const output = document.getElementById("link-code-status");
+async function submitOfficeAuth(endpoint) {
+  const emailInput = document.getElementById("account-email-input");
+  const passwordInput = document.getElementById("account-password-input");
+  const button = document.getElementById(endpoint === "login" ? "sign-in-btn" : "create-account-btn");
+  const email = emailInput.value.trim().toLowerCase();
+  const password = passwordInput.value;
+  if (!emailInput.validity.valid || !email) {
+    setAccountStatus("Enter a valid email address.");
+    return;
+  }
+  if (!passwordInput.validity.valid || password.length < 8 || password.length > 128) {
+    setAccountStatus("Password must be between 8 and 128 characters.");
+    return;
+  }
+
   button.disabled = true;
-  output.textContent = "Creating code...";
+  setAccountStatus(endpoint === "login" ? "Signing in..." : "Creating account...");
   try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/link-code`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/${endpoint}`, {
       method: "POST",
-      headers: { "X-Session-Token": getSessionToken() },
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
     });
     const data = await response.json();
-    if (!response.ok || !data.code) throw new Error(data.error || "Could not create a code");
-    output.textContent = `Enter this code in the other app: ${data.code}`;
+    if (!response.ok || !data.session_token) throw new Error(data.error || "Could not sign in");
+    localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, data.session_token);
+    localStorage.setItem("exelidoc_account_email", data.email);
+    passwordInput.value = "";
+    setAccountConnected(true, data.email);
   } catch (error) {
-    output.textContent = error.message;
+    setAccountStatus(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function saveOfficePassword(event) {
+  const button = event.currentTarget;
+  const passwordInput = document.getElementById("new-password-input");
+  const password = passwordInput.value;
+  if (!passwordInput.validity.valid || password.length < 8 || password.length > 128) {
+    setAccountStatus("Password must be between 8 and 128 characters.");
+    return;
+  }
+  button.disabled = true;
+  setAccountStatus("Saving password...");
+  try {
+    await callBackend("/api/auth/set-password", { password });
+    passwordInput.value = "";
+    setAccountStatus("Password saved. Use it to sign into your account on other devices.");
+  } catch (error) {
+    setAccountStatus(error.message);
   } finally {
     button.disabled = false;
   }

@@ -56,7 +56,7 @@ label {
   box-sizing: border-box;
 }
 
-#sign-in-code-input {
+#password-input, #new-password-input {
   width: 100%;
   padding: 8px 10px;
   box-sizing: border-box;
@@ -69,7 +69,7 @@ label {
   border-color: var(--blue);
 }
 
-#create-account-btn, #sign-in-btn, #sign-out-btn {
+#create-account-btn, #sign-in-btn, #sign-out-btn, #save-password-btn {
   margin-top: 10px;
   width: 100%;
   padding: 9px 0;
@@ -82,11 +82,11 @@ label {
   cursor: pointer;
 }
 
-#create-account-btn:hover, #sign-in-btn:hover, #sign-out-btn:hover {
+#create-account-btn:hover, #sign-in-btn:hover, #sign-out-btn:hover, #save-password-btn:hover {
   background: var(--blue-deep);
 }
 
-#create-account-btn:disabled, #sign-in-btn:disabled {
+#create-account-btn:disabled, #sign-in-btn:disabled, #save-password-btn:disabled {
   background: var(--gray);
   cursor: wait;
 }
@@ -110,12 +110,32 @@ label {
   color: var(--gray);
 }
 
-.account-divider {
-  margin: 14px 0 10px;
-  padding-top: 12px;
-  border-top: 1px solid #EEF1F7;
+.auth-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #D7DDEA;
+}
+
+.auth-mode button {
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
   color: var(--gray);
-  font-size: 11px;
+  font: 600 12px var(--font-display);
+  cursor: pointer;
+}
+
+.auth-mode button[aria-selected="true"] {
+  border-bottom-color: var(--blue);
+  color: var(--blue);
+}
+
+#password-update-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #EEF1F7;
 }
 
 #plans-section {
@@ -135,7 +155,7 @@ h2 {
   font-size: 13px;
 }
 
-#create-link-code-btn, #clear-history-btn {
+#clear-history-btn {
   width: 100%;
   margin-top: 6px;
   padding: 8px;
@@ -144,12 +164,6 @@ h2 {
   color: #fff;
   font: 600 12px var(--font-display);
   cursor: pointer;
-}
-
-#link-code {
-  overflow-wrap: anywhere;
-  font-family: var(--font-mono);
-  font-size: 12px;
 }
 
 .history-heading {

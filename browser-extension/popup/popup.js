@@ -2,18 +2,17 @@ const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 
 const status = document.getElementById("status");
 const emailInput = document.getElementById("email-input");
+const passwordInput = document.getElementById("password-input");
 const createAccountBtn = document.getElementById("create-account-btn");
-const signInCodeInput = document.getElementById("sign-in-code-input");
 const signInBtn = document.getElementById("sign-in-btn");
 const signOutBtn = document.getElementById("sign-out-btn");
 const plansSection = document.getElementById("plans-section");
 const billingStatus = document.getElementById("billing-status");
-const sharingSection = document.getElementById("sharing-section");
 const historySection = document.getElementById("history-section");
 const historyList = document.getElementById("history-list");
-const linkCodeStatus = document.getElementById("link-code");
 const loadMoreHistoryButton = document.getElementById("load-more-history-btn");
 let historyOffset = 0;
+let authMode = "signin";
 
 async function sessionFetch(path, options = {}) {
   const { sessionToken } = await chrome.storage.local.get("sessionToken");
@@ -69,34 +68,31 @@ async function loadHistory(append = false) {
 function setSignedIn(email) {
   emailInput.value = email || "";
   document.getElementById("account-access").hidden = Boolean(email);
+  document.getElementById("password-update-section").hidden = !email;
   signOutBtn.hidden = !email;
   plansSection.hidden = !email;
-  sharingSection.hidden = !email;
   historySection.hidden = !email;
   status.textContent = email
     ? `Signed in as ${email}. Your account is remembered in this browser.`
     : "Create an account to use Exelidoc. Free accounts include 50 AI requests per 30 days.";
 }
 
+function setAuthMode(mode) {
+  authMode = mode;
+  const signingIn = mode === "signin";
+  document.getElementById("sign-in-mode").setAttribute("aria-selected", String(signingIn));
+  document.getElementById("sign-up-mode").setAttribute("aria-selected", String(!signingIn));
+  signInBtn.hidden = !signingIn;
+  createAccountBtn.hidden = signingIn;
+  passwordInput.autocomplete = signingIn ? "current-password" : "new-password";
+  status.textContent = signingIn ? "Sign in to use your Exelidoc account." : "Create a free account with at least 8 password characters.";
+}
+
+setAuthMode("signin");
+
 chrome.storage.local.get(["sessionToken", "accountEmail"], (result) => {
   setSignedIn(result.sessionToken ? result.accountEmail : "");
   if (result.sessionToken) loadHistory();
-});
-
-document.getElementById("create-link-code-btn").addEventListener("click", async (event) => {
-  const button = event.currentTarget;
-  button.disabled = true;
-  linkCodeStatus.textContent = "Creating code...";
-  try {
-    const response = await sessionFetch("/api/auth/link-code", { method: "POST", body: "{}" });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Could not create a code");
-    linkCodeStatus.textContent = `Enter this code in Office: ${data.code}`;
-  } catch (error) {
-    linkCodeStatus.textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
 });
 
 document.getElementById("refresh-history-btn").addEventListener("click", () => loadHistory());
@@ -115,44 +111,56 @@ document.getElementById("clear-history-btn").addEventListener("click", async () 
   }
 });
 
-createAccountBtn.addEventListener("click", async () => {
+async function submitAuth() {
   const email = emailInput.value.trim().toLowerCase();
+  const password = passwordInput.value;
   if (!emailInput.validity.valid || !email) {
-    status.textContent = "Enter a valid email address to create your account.";
+    status.textContent = "Enter a valid email address.";
+    return;
+  }
+  if (!passwordInput.validity.valid || password.length < 8 || password.length > 128) {
+    status.textContent = "Password must be between 8 and 128 characters.";
     return;
   }
 
-  createAccountBtn.disabled = true;
-  status.textContent = "Creating your account...";
+  const submitButton = authMode === "signin" ? signInBtn : createAccountBtn;
+  submitButton.disabled = true;
+  status.textContent = authMode === "signin" ? "Signing in..." : "Creating your account...";
   try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/signup-free`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/${authMode === "signin" ? "login" : "signup-free"}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, password }),
     });
     const data = await response.json();
 
-    if (response.status === 409) {
-      status.textContent = "An account already exists for this email. Sign in with a one-time code from a signed-in Exelidoc app.";
-      return;
-    }
     if (!response.ok || !data.session_token) {
+      if (response.status === 409) {
+        status.textContent = "An account already exists. Switch to Sign in.";
+        return;
+      }
       status.textContent = data.error || "Could not create your account. Try again shortly.";
       return;
     }
 
     chrome.storage.local.set({ sessionToken: data.session_token, accountEmail: data.email }, () => {
+      passwordInput.value = "";
       setSignedIn(data.email);
       historyOffset = 0;
       loadHistory();
     });
   } catch (error) {
-    console.error("Exelidoc: account signup failed --", error);
+    console.error("Exelidoc: account access failed --", error);
     status.textContent = "Could not reach Exelidoc. Try again shortly.";
   } finally {
-    createAccountBtn.disabled = false;
+    submitButton.disabled = false;
   }
-});
+}
+
+createAccountBtn.addEventListener("click", submitAuth);
+signInBtn.addEventListener("click", submitAuth);
+document.getElementById("sign-in-mode").addEventListener("click", () => setAuthMode("signin"));
+document.getElementById("sign-up-mode").addEventListener("click", () => setAuthMode("signup"));
 
 signOutBtn.addEventListener("click", () => {
   chrome.storage.local.remove(["sessionToken", "accountEmail"], () => {
@@ -161,38 +169,29 @@ signOutBtn.addEventListener("click", () => {
   });
 });
 
-signInBtn.addEventListener("click", async () => {
-  const code = signInCodeInput.value.trim();
-  if (!code) {
-    status.textContent = "Enter a connection code from a signed-in Exelidoc app.";
+document.getElementById("save-password-btn").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const newPassword = document.getElementById("new-password-input");
+  const updateStatus = document.getElementById("password-update-status");
+  if (!newPassword.validity.valid || newPassword.value.length < 8 || newPassword.value.length > 128) {
+    updateStatus.textContent = "Password must be between 8 and 128 characters.";
     return;
   }
-
-  signInBtn.disabled = true;
-  status.textContent = "Signing in...";
+  button.disabled = true;
+  updateStatus.textContent = "Saving password...";
   try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/redeem-link-code`, {
+    const response = await sessionFetch("/api/auth/set-password", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ password: newPassword.value }),
     });
     const data = await response.json();
-    if (!response.ok || !data.session_token) {
-      status.textContent = data.error || "Could not sign in. Check the code and try again.";
-      return;
-    }
-
-    chrome.storage.local.set({ sessionToken: data.session_token, accountEmail: data.email }, () => {
-      signInCodeInput.value = "";
-      setSignedIn(data.email);
-      historyOffset = 0;
-      loadHistory();
-    });
+    if (!response.ok) throw new Error(data.error || "Could not save password");
+    newPassword.value = "";
+    updateStatus.textContent = "Password saved. Use it to sign into your account on other devices.";
   } catch (error) {
-    console.error("Exelidoc: sign-in failed --", error);
-    status.textContent = "Could not reach Exelidoc. Try again shortly.";
+    updateStatus.textContent = error.message;
   } finally {
-    signInBtn.disabled = false;
+    button.disabled = false;
   }
 });
 

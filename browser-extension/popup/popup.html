@@ -12,19 +12,28 @@
   <main>
     <section id="settings-section">
       <div id="account-access">
-        <h2>Sign in</h2>
-        <p class="plans-note">Create a one-time sign-in code from a Chrome or Office app where you are already signed in, then enter it here. Codes expire in 10 minutes and work once.</p>
-        <label for="sign-in-code-input">Connection code</label>
-        <input id="sign-in-code-input" autocomplete="one-time-code" placeholder="Enter code" />
-        <button id="sign-in-btn">Sign in with code</button>
-        <p class="account-note">An email address alone is not enough to sign in securely.</p>
-        <div class="account-divider">Or create an account</div>
+        <div class="auth-mode" role="tablist" aria-label="Account access">
+          <button id="sign-in-mode" type="button" role="tab" aria-selected="true">Sign in</button>
+          <button id="sign-up-mode" type="button" role="tab" aria-selected="false">Create account</button>
+        </div>
         <label for="email-input">Email address</label>
         <input type="email" id="email-input" placeholder="you@example.com" autocomplete="email" required />
+        <label for="password-input">Password</label>
+        <input type="password" id="password-input" autocomplete="current-password" minlength="8" maxlength="128" required />
+        <p id="password-hint" class="account-note">Use at least 8 characters. If your account predates passwords, set one from an app where you are still signed in.</p>
+        <button id="sign-in-btn">Sign in</button>
         <button id="create-account-btn">Create free account</button>
       </div>
       <button id="sign-out-btn" hidden>Sign out</button>
       <p id="status">Create an account to use Exelidoc. Free accounts include 50 AI requests per 30 days.</p>
+    </section>
+
+    <section id="password-update-section" hidden>
+      <h2>Set or change password</h2>
+      <label for="new-password-input">New password</label>
+      <input type="password" id="new-password-input" minlength="8" maxlength="128" autocomplete="new-password" />
+      <button id="save-password-btn">Save password</button>
+      <p id="password-update-status" class="account-note" role="status" aria-live="polite"></p>
     </section>
 
     <section id="plans-section" hidden>
@@ -33,13 +42,6 @@
       <button class="checkout-btn" data-tier="pro">Upgrade to Pro · 500 requests</button>
       <button class="checkout-btn" data-tier="enterprise">Upgrade to Enterprise · 5,000 requests</button>
       <p id="billing-status" role="status" aria-live="polite"></p>
-    </section>
-
-    <section id="sharing-section" hidden>
-      <h2>Connect Office</h2>
-      <p class="plans-note">This links the Office add-in to your current Exelidoc account so both apps share AI history. Create a one-time code and enter it in Office. It expires in 10 minutes, works once, and is not your password.</p>
-      <button id="create-link-code-btn">Create connection code</button>
-      <p id="link-code" role="status" aria-live="polite"></p>
     </section>
 
     <section id="history-section" hidden>

@@ -12,14 +12,21 @@
     <div class="subtitle"></div>
 
     <div id="settings">
-      <label for="link-code-input">Connect Exelidoc account</label>
-      <input id="link-code-input" autocomplete="one-time-code" placeholder="One-time code" />
-      <button id="connect-account-btn">Connect</button>
-      <button id="disconnect-account-btn" hidden>Disconnect</button>
-      <button id="create-link-code-btn" hidden>Create sign-in code</button>
+      <div id="account-access">
+        <label for="account-email-input">Email address</label>
+        <input type="email" id="account-email-input" autocomplete="email" placeholder="you@example.com" />
+        <label for="account-password-input">Password</label>
+        <input type="password" id="account-password-input" minlength="8" maxlength="128" autocomplete="current-password" />
+        <button id="sign-in-btn">Sign in</button>
+        <button id="create-account-btn">Create account</button>
+      </div>
+      <div id="account-session" hidden>
+        <button id="sign-out-btn" class="secondary-button">Sign out</button>
+        <label for="new-password-input">Set or change password</label>
+        <input type="password" id="new-password-input" minlength="8" maxlength="128" autocomplete="new-password" placeholder="At least 8 characters" />
+        <button id="save-password-btn">Save password</button>
+      </div>
       <div id="account-status" role="status" aria-live="polite"></div>
-      <div id="link-code-status" class="exelidoc-hint" role="status" aria-live="polite"></div>
-      <div class="exelidoc-hint">Enter a one-time code from a signed-in app to connect. When signed in here, you can create a code for another app. Codes expire in 10 minutes and work once.</div>
     </div>
 
     <div id="text-mode">

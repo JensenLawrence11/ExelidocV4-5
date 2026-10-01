@@ -42,34 +42,6 @@ def test_history_clear_is_scoped_to_authenticated_user():
     delete_items.assert_called_once_with("user-1")
 
 
-def test_office_link_code_requires_session_and_returns_code():
-    app = create_app()
-
-    with app.test_client() as client, patch(
-        "utils.auth_decorator.get_user_by_session_token", return_value=USER
-    ), patch("routes.auth.create_link_code", return_value=("A1B2C3D4", "expires")) as create_code:
-        response = client.post(
-            "/api/auth/link-code", headers={"X-Session-Token": "session-1"}
-        )
-
-    assert response.status_code == 200
-    assert response.get_json()["code"] == "A1B2C3D4"
-    create_code.assert_called_once_with("user-1")
-
-
-def test_redeemed_office_link_code_returns_shared_session():
-    app = create_app()
-    linked_user = {**USER, "session_token": "shared-session"}
-
-    with app.test_client() as client, patch(
-        "routes.auth.redeem_link_code", return_value="user-1"
-    ), patch("routes.auth.get_user_by_id", return_value=linked_user):
-        response = client.post("/api/auth/redeem-link-code", json={"code": "A1B2C3D4"})
-
-    assert response.status_code == 200
-    assert response.get_json()["session_token"] == "shared-session"
-
-
 def test_successful_ai_request_is_saved_to_account_history():
     app = create_app()
 

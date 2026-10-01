@@ -4,6 +4,7 @@ separate from the route layer.
 """
 import secrets
 from datetime import datetime, timezone, timedelta
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from services.supabase_client import get_supabase
 from config import Config
@@ -16,7 +17,26 @@ def generate_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def create_user(email: str, tier: str = "free") -> dict:
+def hash_password(password: str) -> str:
+    return generate_password_hash(password, method="scrypt")
+
+
+def password_matches(password: str, password_hash: str | None) -> bool:
+    if not password_hash:
+        return False
+    try:
+        return check_password_hash(password_hash, password)
+    except (ValueError, TypeError):
+        return False
+
+
+def set_user_password(user_id: str, password: str) -> None:
+    get_supabase().table("users").update({
+        "password_hash": hash_password(password),
+    }).eq("id", user_id).execute()
+
+
+def create_user(email: str, tier: str = "free", password: str | None = None) -> dict:
     """Free tier: called directly on signup. Paid tiers: called from the
     Stripe webhook once checkout completes."""
     supabase = get_supabase()
@@ -28,15 +48,14 @@ def create_user(email: str, tier: str = "free") -> dict:
         "period_reset_at": (datetime.now(timezone.utc) + PERIOD_LENGTH).isoformat(),
         "session_token": token,
     }
+    if password:
+        payload["password_hash"] = hash_password(password)
     try:
         result = supabase.table("users").insert(payload).execute()
     except Exception:
-        result = supabase.table("users").insert({
-            "email": email,
-            "tier": tier,
-            "requests_used": 0,
-            "period_reset_at": (datetime.now(timezone.utc) + PERIOD_LENGTH).isoformat(),
-        }).execute()
+        fallback_payload = {**payload}
+        fallback_payload.pop("session_token", None)
+        result = supabase.table("users").insert(fallback_payload).execute()
     return result.data[0]
 
 
@@ -54,12 +73,6 @@ def get_user_by_session_token(session_token: str) -> dict | None:
         result = supabase.table("users").select("*").eq("session_token", session_token).execute()
     except Exception:
         return None
-    return result.data[0] if result.data else None
-
-
-def get_user_by_id(user_id: str) -> dict | None:
-    supabase = get_supabase()
-    result = supabase.table("users").select("*").eq("id", user_id).execute()
     return result.data[0] if result.data else None
 
 
