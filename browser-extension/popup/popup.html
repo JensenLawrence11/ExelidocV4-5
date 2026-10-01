@@ -11,12 +11,20 @@
   </header>
   <main>
     <section id="settings-section">
-      <label for="email-input">Email address</label>
-      <input type="email" id="email-input" placeholder="you@example.com" autocomplete="email" required />
-      <button id="create-account-btn">Create free account</button>
+      <div id="account-access">
+        <h2>Sign in</h2>
+        <p class="plans-note">Create a one-time sign-in code from a Chrome or Office app where you are already signed in, then enter it here. Codes expire in 10 minutes and work once.</p>
+        <label for="sign-in-code-input">Connection code</label>
+        <input id="sign-in-code-input" autocomplete="one-time-code" placeholder="Enter code" />
+        <button id="sign-in-btn">Sign in with code</button>
+        <p class="account-note">An email address alone is not enough to sign in securely.</p>
+        <div class="account-divider">Or create an account</div>
+        <label for="email-input">Email address</label>
+        <input type="email" id="email-input" placeholder="you@example.com" autocomplete="email" required />
+        <button id="create-account-btn">Create free account</button>
+      </div>
       <button id="sign-out-btn" hidden>Sign out</button>
       <p id="status">Create an account to use Exelidoc. Free accounts include 50 AI requests per 30 days.</p>
-      <p class="account-note">Beta limitation: email ownership is not verified, and signing into an existing account on a fresh install is not available yet.</p>
     </section>
 
     <section id="plans-section" hidden>

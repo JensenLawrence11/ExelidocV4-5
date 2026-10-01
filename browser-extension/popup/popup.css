@@ -56,12 +56,20 @@ label {
   box-sizing: border-box;
 }
 
+#sign-in-code-input {
+  width: 100%;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 1px solid #D7DDEA;
+  font: 12px var(--font-mono);
+}
+
 #email-input:focus {
   outline: none;
   border-color: var(--blue);
 }
 
-#create-account-btn, #sign-out-btn {
+#create-account-btn, #sign-in-btn, #sign-out-btn {
   margin-top: 10px;
   width: 100%;
   padding: 9px 0;
@@ -74,11 +82,11 @@ label {
   cursor: pointer;
 }
 
-#create-account-btn:hover, #sign-out-btn:hover {
+#create-account-btn:hover, #sign-in-btn:hover, #sign-out-btn:hover {
   background: var(--blue-deep);
 }
 
-#create-account-btn:disabled {
+#create-account-btn:disabled, #sign-in-btn:disabled {
   background: var(--gray);
   cursor: wait;
 }
@@ -100,6 +108,14 @@ label {
   font-size: 11px;
   line-height: 1.45;
   color: var(--gray);
+}
+
+.account-divider {
+  margin: 14px 0 10px;
+  padding-top: 12px;
+  border-top: 1px solid #EEF1F7;
+  color: var(--gray);
+  font-size: 11px;
 }
 
 #plans-section {

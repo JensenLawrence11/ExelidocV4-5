@@ -12,12 +12,14 @@
     <div class="subtitle"></div>
 
     <div id="settings">
-      <label for="link-code-input">Connect Chrome account</label>
+      <label for="link-code-input">Connect Exelidoc account</label>
       <input id="link-code-input" autocomplete="one-time-code" placeholder="One-time code" />
       <button id="connect-account-btn">Connect</button>
       <button id="disconnect-account-btn" hidden>Disconnect</button>
+      <button id="create-link-code-btn" hidden>Create sign-in code</button>
       <div id="account-status" role="status" aria-live="polite"></div>
-      <div class="exelidoc-hint">Create this one-time code in the Chrome extension to link both apps to the same account. It expires in 10 minutes, works once, and is not your password.</div>
+      <div id="link-code-status" class="exelidoc-hint" role="status" aria-live="polite"></div>
+      <div class="exelidoc-hint">Enter a one-time code from a signed-in app to connect. When signed in here, you can create a code for another app. Codes expire in 10 minutes and work once.</div>
     </div>
 
     <div id="text-mode">

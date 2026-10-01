@@ -3,6 +3,8 @@ const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 const status = document.getElementById("status");
 const emailInput = document.getElementById("email-input");
 const createAccountBtn = document.getElementById("create-account-btn");
+const signInCodeInput = document.getElementById("sign-in-code-input");
+const signInBtn = document.getElementById("sign-in-btn");
 const signOutBtn = document.getElementById("sign-out-btn");
 const plansSection = document.getElementById("plans-section");
 const billingStatus = document.getElementById("billing-status");
@@ -66,8 +68,7 @@ async function loadHistory(append = false) {
 
 function setSignedIn(email) {
   emailInput.value = email || "";
-  emailInput.disabled = Boolean(email);
-  createAccountBtn.hidden = Boolean(email);
+  document.getElementById("account-access").hidden = Boolean(email);
   signOutBtn.hidden = !email;
   plansSection.hidden = !email;
   sharingSection.hidden = !email;
@@ -132,7 +133,7 @@ createAccountBtn.addEventListener("click", async () => {
     const data = await response.json();
 
     if (response.status === 409) {
-      status.textContent = "An account already exists for this email. Existing-account sign-in is not available in this beta yet.";
+      status.textContent = "An account already exists for this email. Sign in with a one-time code from a signed-in Exelidoc app.";
       return;
     }
     if (!response.ok || !data.session_token) {
@@ -158,6 +159,41 @@ signOutBtn.addEventListener("click", () => {
     setSignedIn("");
     status.textContent = "Signed out.";
   });
+});
+
+signInBtn.addEventListener("click", async () => {
+  const code = signInCodeInput.value.trim();
+  if (!code) {
+    status.textContent = "Enter a connection code from a signed-in Exelidoc app.";
+    return;
+  }
+
+  signInBtn.disabled = true;
+  status.textContent = "Signing in...";
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/redeem-link-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.session_token) {
+      status.textContent = data.error || "Could not sign in. Check the code and try again.";
+      return;
+    }
+
+    chrome.storage.local.set({ sessionToken: data.session_token, accountEmail: data.email }, () => {
+      signInCodeInput.value = "";
+      setSignedIn(data.email);
+      historyOffset = 0;
+      loadHistory();
+    });
+  } catch (error) {
+    console.error("Exelidoc: sign-in failed --", error);
+    status.textContent = "Could not reach Exelidoc. Try again shortly.";
+  } finally {
+    signInBtn.disabled = false;
+  }
 });
 
 document.querySelectorAll(".checkout-btn").forEach((button) => {

@@ -44,6 +44,7 @@ function setupSettingsUI() {
   const linkCodeInput = document.getElementById("link-code-input");
   const connectButton = document.getElementById("connect-account-btn");
   const disconnectButton = document.getElementById("disconnect-account-btn");
+  const createLinkCodeButton = document.getElementById("create-link-code-btn");
   const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || "";
   if (sessionToken) {
     setAccountConnected(true);
@@ -83,6 +84,8 @@ function setupSettingsUI() {
     document.getElementById("history-list").textContent = "Connect your account to view history.";
   });
 
+  createLinkCodeButton.addEventListener("click", createOfficeLinkCode);
+
   document.getElementById("history-section").addEventListener("toggle", (event) => {
     if (event.currentTarget.open) loadHistory();
   });
@@ -95,7 +98,28 @@ function setAccountConnected(connected, email = "") {
   document.getElementById("link-code-input").hidden = connected;
   document.getElementById("connect-account-btn").hidden = connected;
   document.getElementById("disconnect-account-btn").hidden = !connected;
+  document.getElementById("create-link-code-btn").hidden = !connected;
   setAccountStatus(connected ? `Connected${email ? ` as ${email}` : ""}.` : "Connect using a code from Chrome.");
+}
+
+async function createOfficeLinkCode(event) {
+  const button = event.currentTarget;
+  const output = document.getElementById("link-code-status");
+  button.disabled = true;
+  output.textContent = "Creating code...";
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/link-code`, {
+      method: "POST",
+      headers: { "X-Session-Token": getSessionToken() },
+    });
+    const data = await response.json();
+    if (!response.ok || !data.code) throw new Error(data.error || "Could not create a code");
+    output.textContent = `Enter this code in the other app: ${data.code}`;
+  } catch (error) {
+    output.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function setAccountStatus(text) {
