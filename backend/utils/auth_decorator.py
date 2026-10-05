@@ -75,7 +75,7 @@ def require_subscription(fn):
 
         if not allowed:
             return jsonify(
-                error="Monthly usage limit reached -- upgrade your plan for more",
+                error="Daily usage limit reached. Your limit resets every 24 hours; upgrade your plan for more requests.",
                 tier=user.get("tier"),
             ), 429
 

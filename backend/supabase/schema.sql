@@ -17,9 +17,9 @@ create table if not exists users (
   subscription_status text not null default 'inactive',
   -- one of: free, pro, enterprise
   tier text not null default 'free',
-  -- requests used in the CURRENT period; reset to 0 when period_reset_at passes
+  -- requests used in the current 24-hour period; reset to 0 when period_reset_at passes
   requests_used integer not null default 0,
-  period_reset_at timestamptz not null default (now() + interval '30 days'),
+  period_reset_at timestamptz not null default (now() + interval '1 day'),
   created_at timestamptz not null default now(),
   constraint valid_tier check (tier in ('free', 'pro', 'enterprise'))
 );

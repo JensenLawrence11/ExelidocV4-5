@@ -74,7 +74,7 @@ function setSignedIn(email) {
   historySection.hidden = !email;
   status.textContent = email
     ? `Signed in as ${email}. Your account is remembered in this browser.`
-    : "Create an account to use Exelidoc. Free accounts include 50 AI requests per 30 days.";
+    : "Create an account to use Exelidoc. Free accounts include 5 AI requests every 24 hours.";
 }
 
 function setAuthMode(mode) {

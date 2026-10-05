@@ -9,7 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from services.supabase_client import get_supabase
 from config import Config
 
-PERIOD_LENGTH = timedelta(days=30)
+PERIOD_LENGTH = timedelta(days=1)
 ACTIVE_SUBSCRIPTION_STATUSES = {"active", "trialing"}
 
 
@@ -206,7 +206,7 @@ def _parse_reset_at(value) -> datetime | None:
 
 def check_and_consume_quota(user: dict) -> tuple[bool, int]:
     """
-    Enforces the monthly request limit for the user's tier. Lazily resets
+    Enforces the 24-hour request limit for the user's tier. Lazily resets
     the counter if the stored period_reset_at has passed (no cron job
     needed -- the reset just happens on the next request after it expires).
 

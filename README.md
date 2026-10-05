@@ -104,6 +104,22 @@ See `.env.example` at the repo root for the full list (AI provider key, Stripe k
 Flask secret key, etc). Copy it to `backend/.env` and fill in real values — never commit
 the real `.env` file (already covered in `.gitignore`).
 
+### Stripe paid plans
+
+Create active recurring prices for Pro and Enterprise in the same Stripe account
+and mode (test or live) as `STRIPE_SECRET_KEY`. Set their `price_...` IDs in
+`STRIPE_PRICE_ID_PRO` and `STRIPE_PRICE_ID_ENTERPRISE`. Product IDs (`prod_...`)
+are not accepted. Configure a Stripe webhook pointing to
+`https://exelidocv4-5.onrender.com/api/stripe/webhook` for
+`checkout.session.completed`, `customer.subscription.updated`, and
+`customer.subscription.deleted`, then set its signing secret as
+`STRIPE_WEBHOOK_SECRET`. Checkout can succeed without the webhook, but paid
+access will not be recorded in Exelidoc until the webhook is delivered.
+
+Daily AI request limits use a rolling 24-hour window: 5 for Free, 20 for Pro,
+and 50 for Enterprise. Apply `backend/supabase/migration_daily_request_limits.sql`
+once when deploying the change to reset existing accounts into a fresh window.
+
 
 ## Status
 

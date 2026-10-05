@@ -47,9 +47,17 @@ def create_checkout_session_route():
     except stripe.error.InvalidRequestError:
         return jsonify(
             error=(
-                "Stripe could not find the configured price. Check that the Price ID belongs to "
-                "the same Stripe account and test/live mode as STRIPE_SECRET_KEY, and that it is an active recurring price."
+                "Stripe could not find the configured price. Check that the STRIPE_PRICE_ID for this plan "
+                "is an active recurring Price ID from the same Stripe account and test/live mode as STRIPE_SECRET_KEY."
             )
+        ), 503
+    except stripe.error.AuthenticationError:
+        return jsonify(
+            error="Stripe authentication failed. Set a valid STRIPE_SECRET_KEY for the same Stripe account as the plan prices."
+        ), 503
+    except stripe.error.StripeError:
+        return jsonify(
+            error="Stripe could not create checkout. Check the secret key, recurring Price IDs, and Stripe account permissions."
         ), 503
     except ValueError as e:
         return jsonify(error=str(e)), 503
@@ -65,10 +73,13 @@ def webhook_route():
     """
     payload = request.data
     sig_header = request.headers.get("Stripe-Signature")
+    webhook_secret = current_app.config.get("STRIPE_WEBHOOK_SECRET")
+    if not webhook_secret:
+        return jsonify(error="Stripe webhook is not configured: set STRIPE_WEBHOOK_SECRET in the backend environment."), 503
 
     try:
         event = handle_webhook_event(
-            payload, sig_header, current_app.config["STRIPE_WEBHOOK_SECRET"]
+            payload, sig_header, webhook_secret
         )
     except ValueError:
         return jsonify(error="Invalid payload"), 400

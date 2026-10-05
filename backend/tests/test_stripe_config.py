@@ -130,3 +130,32 @@ def test_checkout_reports_stripe_price_not_found():
 
     assert response.status_code == 503
     assert "same Stripe account and test/live mode" in response.get_json()["error"]
+
+
+def test_checkout_reports_missing_secret_key():
+    app = create_app()
+    free_user = {"email": "user@example.com", "tier": "free"}
+
+    with app.test_client() as client, patch(
+        "routes.stripe_routes.get_user_by_email", return_value=free_user
+    ), patch.object(stripe_service.Config, "STRIPE_SECRET_KEY", None), patch.dict(
+        stripe_service.TIER_PRICE_IDS, {"pro": "price_test"}
+    ):
+        response = client.post(
+            "/api/stripe/create-checkout-session",
+            json={"customer_email": "user@example.com", "tier": "pro"},
+        )
+
+    assert response.status_code == 503
+    assert "STRIPE_SECRET_KEY" in response.get_json()["error"]
+
+
+def test_webhook_reports_missing_signing_secret():
+    app = create_app()
+    app.config["STRIPE_WEBHOOK_SECRET"] = None
+
+    with app.test_client() as client:
+        response = client.post("/api/stripe/webhook", data=b"{}")
+
+    assert response.status_code == 503
+    assert "STRIPE_WEBHOOK_SECRET" in response.get_json()["error"]

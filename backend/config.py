@@ -42,9 +42,9 @@ class Config:
     STRIPE_PRICE_ID_ENTERPRISE = os.environ.get("STRIPE_PRICE_ID_ENTERPRISE")
 
     TIER_LIMITS = {
-        "free": 50,
-        "pro": 500,
-        "enterprise": 5000,
+        "free": 5,
+        "pro": 20,
+        "enterprise": 50,
     }
 
     SUPABASE_URL = os.environ.get("SUPABASE_URL")
