@@ -31,6 +31,13 @@ Office.onReady((info) => {
       subtitle.textContent = "AI assistant for PowerPoint";
       document.getElementById("ask").addEventListener("click", onAskClicked);
       break;
+    case Office.HostType.Outlook:
+      subtitle.textContent = "AI assistant for Outlook";
+      document.getElementById("hint").textContent =
+        "Reviews and replaces the email body. Formatting or signatures may change; use Undo to restore the original. Older Outlook versions may include quoted replies.";
+      document.getElementById("ask").textContent = "Review email";
+      document.getElementById("ask").addEventListener("click", onAskClicked);
+      break;
     default:
       setStatus("Unsupported host.");
       textMode.hidden = true;
@@ -301,9 +308,13 @@ async function onAskClicked() {
   setNotes(null);
 
   try {
-    const existingText =
-      currentHost === Office.HostType.Word
-        ? await wordGetSelectedOrBodyText()
+    const outlookDraft = currentHost === Office.HostType.Outlook
+      ? await outlookGetDraft()
+      : null;
+    const existingText = currentHost === Office.HostType.Word
+      ? await wordGetSelectedOrBodyText()
+      : currentHost === Office.HostType.Outlook
+        ? outlookDraft.text
         : await powerPointGetSelectedText();
 
     let result;
@@ -316,17 +327,33 @@ async function onAskClicked() {
       if (currentHost === Office.HostType.Word) {
         preEditSnapshot = { kind: "word", text: existingText };
         await wordApplyToSelectionOrBody(result.corrected);
-      } else {
+      } else if (currentHost === Office.HostType.PowerPoint) {
         preEditSnapshot = { kind: "powerpoint", text: existingText };
         await powerPointSetSelectedText(result.corrected);
+      } else {
+        preEditSnapshot = {
+          kind: "outlook",
+          body: outlookDraft.body,
+          coercionType: outlookDraft.coercionType,
+          bodyModeOptions: outlookDraft.bodyModeOptions,
+        };
+        await outlookSetBody(result.corrected, outlookDraft.coercionType, outlookDraft.bodyModeOptions);
       }
     } else {
       result = await callBackend("/api/ai/generate-text", { prompt: instruction });
       preEditSnapshot = null; // nothing to undo back to -- there was no prior text
       if (currentHost === Office.HostType.Word) {
         await wordInsertAtCursor(result.generated);
-      } else {
+      } else if (currentHost === Office.HostType.PowerPoint) {
         await powerPointSetSelectedText(result.generated);
+      } else {
+        preEditSnapshot = {
+          kind: "outlook",
+          body: outlookDraft.body,
+          coercionType: outlookDraft.coercionType,
+          bodyModeOptions: outlookDraft.bodyModeOptions,
+        };
+        await outlookSetBody(result.generated, outlookDraft.coercionType, outlookDraft.bodyModeOptions);
       }
     }
 
@@ -347,6 +374,12 @@ async function onUndoClicked() {
       await wordApplyToSelectionOrBody(preEditSnapshot.text);
     } else if (preEditSnapshot.kind === "powerpoint") {
       await powerPointSetSelectedText(preEditSnapshot.text);
+    } else if (preEditSnapshot.kind === "outlook") {
+      await outlookWriteBody(
+        preEditSnapshot.body,
+        preEditSnapshot.coercionType,
+        preEditSnapshot.bodyModeOptions
+      );
     } else if (preEditSnapshot.kind === "excel") {
       await Excel.run(async (context) => {
         const range = context.workbook.getSelectedRange();
@@ -361,6 +394,57 @@ async function onUndoClicked() {
     preEditSnapshot = null;
     document.getElementById("undo").hidden = true;
   }
+}
+
+function outlookGetDraft() {
+  const body = Office.context.mailbox.item.body;
+  const bodyModeOptions = Office.context.requirements.isSetSupported("Mailbox", "1.10")
+    ? { bodyMode: Office.MailboxEnums.BodyMode.HostConfig }
+    : {};
+  return new Promise((resolve, reject) => {
+    body.getTypeAsync((typeResult) => {
+      if (typeResult.status === Office.AsyncResultStatus.Failed) {
+        reject(new Error(typeResult.error.message));
+        return;
+      }
+
+      const coercionType = typeResult.value;
+      body.getAsync(coercionType, bodyModeOptions, (bodyResult) => {
+        if (bodyResult.status === Office.AsyncResultStatus.Failed) {
+          reject(new Error(bodyResult.error.message));
+          return;
+        }
+
+        const originalBody = bodyResult.value || "";
+        let text = originalBody;
+        if (coercionType === Office.CoercionType.Html) {
+          const parsedBody = new DOMParser().parseFromString(originalBody, "text/html").body;
+          text = parsedBody.innerText || parsedBody.textContent;
+        }
+        resolve({ body: originalBody, coercionType, text: text || "", bodyModeOptions });
+      });
+    });
+  });
+}
+
+function outlookSetBody(text, coercionType, bodyModeOptions = {}) {
+  const content = coercionType === Office.CoercionType.Html
+    ? `<div>${escapeHtml(text).replace(/\r?\n/g, "<br>")}</div>`
+    : text;
+  return outlookWriteBody(content, coercionType, bodyModeOptions);
+}
+
+function outlookWriteBody(content, coercionType, bodyModeOptions = {}) {
+  const body = Office.context.mailbox.item.body;
+  return new Promise((resolve, reject) => {
+    body.setAsync(content, { coercionType, ...bodyModeOptions }, (result) => {
+      if (result.status === Office.AsyncResultStatus.Failed) {
+        reject(new Error(result.error.message));
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------

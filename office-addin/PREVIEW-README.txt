@@ -2,7 +2,9 @@ Exelidoc Office Add-in Preview
 =============================
 
 This is an experimental developer preview, not a finished or tested release.
-It is not published in Microsoft AppSource. Outlook is not included.
+It is not published in Microsoft AppSource. Outlook uses a separate compose
+manifest; its manifest passes schema validation, but live behavior still needs
+to be verified in a signed-in Outlook client.
 
 The manifest targets Word, Excel, and PowerPoint desktop apps, but these hosts
 have not been verified by the maintainer. Do not rely on this preview with
@@ -12,9 +14,11 @@ Installation
 ------------
 
 1. Extract this ZIP.
-2. In a supported Office desktop app, open the Add-ins menu and choose the
-   option to upload a custom add-in manifest.
-3. Select manifest.xml and follow Office's prompts.
+2. For Word, Excel, or PowerPoint, upload manifest.xml from the app's Add-ins
+   menu. For Outlook, open My Add-ins, choose Add a custom add-in, then Add
+   from file and select manifest-outlook.xml.
+3. Sign in to Microsoft 365 and follow the host's prompts. In Outlook, open a
+   message compose window and choose Open Exelidoc from the ribbon.
 
 The manifest loads the task pane from the Exelidoc hosted service. The Office
 preview currently does not share the Chrome extension's saved sign-in, and
