@@ -2,6 +2,7 @@ let activePanel = null;
 let activeBox = null;
 let preEditSnapshot = null;
 let docsLauncher = null;
+let boundEditor = null;
 
 function getDocsEditor() {
   return document.querySelector('.kix-appview-editor[contenteditable="true"], [role="textbox"][contenteditable="true"]');
@@ -55,15 +56,18 @@ function ensureDocsLauncher() {
   button.textContent = "Exelidoc";
   button.setAttribute("aria-label", "Open Exelidoc panel");
   button.addEventListener("click", () => {
-    const editor = getDocsEditor();
-    if (!editor) return;
-    if (!activePanel) activePanel = createExelidocPanel();
-    setActiveBox(editor);
-    activePanel.style.display = "flex";
+    openDocsPanel();
   });
 
   document.body.appendChild(button);
   docsLauncher = button;
+}
+
+function openDocsPanel() {
+  const editor = getDocsEditor();
+  if (editor && editor !== activeBox) setActiveBox(editor);
+  if (!activePanel) activePanel = createExelidocPanel();
+  activePanel.style.display = "flex";
 }
 
 function setActiveBox(box) {
@@ -222,22 +226,23 @@ function resetPanelState(panel) {
 }
 
 function initDocsPanel() {
-  const editor = getDocsEditor();
-  if (!editor) return;
   ensureDocsLauncher();
+  const editor = getDocsEditor();
+  if (!editor || editor === boundEditor) return;
+  boundEditor = editor;
   editor.addEventListener("focus", () => setActiveBox(editor));
+  setActiveBox(editor);
 }
 
 const docsObserver = new MutationObserver(() => {
-  if (!docsLauncher) {
-    const editor = getDocsEditor();
-    if (editor) {
-      initDocsPanel();
-    }
-  }
+  initDocsPanel();
 });
 docsObserver.observe(document.body, { childList: true, subtree: true });
 
-if (getDocsEditor()) {
-  initDocsPanel();
-}
+document.addEventListener("click", (event) => {
+  if (event.target instanceof Element && event.target.closest(".kix-appview-editor")) {
+    openDocsPanel();
+  }
+});
+
+initDocsPanel();

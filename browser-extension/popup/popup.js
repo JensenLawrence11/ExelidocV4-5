@@ -134,6 +134,10 @@ async function submitAuth() {
     });
     const data = await response.json();
 
+    if (response.ok && authMode === "signup" && data.verification_required) {
+      status.textContent = data.message;
+      return;
+    }
     if (!response.ok || !data.session_token) {
       if (response.status === 409) {
         status.textContent = "An account already exists. Switch to Sign in.";

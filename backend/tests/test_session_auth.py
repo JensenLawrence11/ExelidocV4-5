@@ -4,33 +4,25 @@ from app import create_app
 from services.user_service import hash_password, password_matches
 
 
-def test_signup_free_returns_session_token_not_api_key():
+def test_signup_free_sends_verification_email_before_creating_account():
     app = create_app()
 
     with app.test_client() as client:
         with patch("routes.auth.get_user_by_email", return_value=None), patch(
-            "routes.auth.create_user"
-        ) as mock_create_user:
-            mock_create_user.return_value = {
-                "id": "user-1",
-                "email": "user@example.com",
-                "tier": "free",
-                "session_token": "remember-me-token",
-                "api_key": "internal-secret-key",
-            }
+            "routes.auth.create_pending_signup"
+        ) as mock_create_pending, patch("routes.auth.send_verification_email") as send_email:
 
             response = client.post(
                 "/api/auth/signup-free",
                 json={"email": "user@example.com", "password": "correct horse battery"},
             )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     data = response.get_json()
-    assert data["session_token"] == "remember-me-token"
-    assert "api_key" not in data
-    mock_create_user.assert_called_once_with(
-        "user@example.com", tier="free", password="correct horse battery"
-    )
+    assert data["verification_required"] is True
+    assert "session_token" not in data
+    mock_create_pending.assert_called_once()
+    send_email.assert_called_once()
 
 
 def test_signup_free_does_not_return_existing_account_session():
@@ -66,6 +58,46 @@ def test_signup_free_requires_a_strong_enough_password():
         )
 
     assert response.status_code == 400
+
+
+def test_signup_free_rejects_invalid_email_address():
+    app = create_app()
+
+    with app.test_client() as client:
+        response = client.post(
+            "/api/auth/signup-free",
+            json={"email": "not-an-email", "password": "correct horse battery"},
+        )
+
+    assert response.status_code == 400
+
+
+def test_verification_creates_account_and_sends_welcome_email():
+    from datetime import datetime, timedelta, timezone
+
+    app = create_app()
+    pending = {
+        "email": "user@example.com",
+        "password_hash": "hashed-password",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+
+    with app.test_client() as client, patch(
+        "routes.auth.get_pending_signup_by_token_hash", return_value=pending
+    ), patch("routes.auth.get_user_by_email", return_value=None), patch(
+        "routes.auth.create_user"
+    ) as create_account, patch("routes.auth.delete_pending_signup") as delete_pending, patch(
+        "routes.auth.send_welcome_email"
+    ) as send_welcome:
+        response = client.post("/api/auth/verify-email", data={"token": "verification-token"})
+
+    assert response.status_code == 200
+    assert b"account is ready" in response.data
+    create_account.assert_called_once_with(
+        "user@example.com", tier="free", password_hash="hashed-password"
+    )
+    delete_pending.assert_called_once_with("user@example.com")
+    send_welcome.assert_called_once_with("user@example.com")
 
 
 def test_password_hash_verifies_without_storing_plaintext():

@@ -32,6 +32,21 @@
   overflow: hidden;
 }
 
+.exelidoc-docs-launcher {
+  position: fixed;
+  top: 18px;
+  right: 22px;
+  z-index: 10001;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 4px;
+  background: #1a73e8;
+  color: #fff;
+  font: 500 13px "Google Sans", Roboto, Arial, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
 .exelidoc-panel * {
   box-sizing: border-box;
 }

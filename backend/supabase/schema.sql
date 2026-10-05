@@ -31,6 +31,14 @@ create table if not exists ai_usage_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists pending_signups (
+  email text primary key,
+  password_hash text not null,
+  verification_token_hash text unique not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_users_api_key on users(api_key);
 create index if not exists idx_users_session_token on users(session_token);
 create index if not exists idx_users_stripe_customer on users(stripe_customer_id);
@@ -41,3 +49,4 @@ create index if not exists idx_usage_user_id on ai_usage_logs(user_id);
 -- with the public anon key instead.
 alter table users enable row level security;
 alter table ai_usage_logs enable row level security;
+alter table pending_signups enable row level security;

@@ -92,7 +92,12 @@ async function submitOfficeAuth(endpoint) {
       body: JSON.stringify({ email, password }),
     });
     const data = await response.json();
-    if (!response.ok || !data.session_token) throw new Error(data.error || "Could not sign in");
+    if (!response.ok) throw new Error(data.error || "Could not sign in");
+    if (endpoint === "signup-free" && data.verification_required) {
+      setAccountStatus(data.message);
+      return;
+    }
+    if (!data.session_token) throw new Error(data.error || "Could not sign in");
     localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, data.session_token);
     localStorage.setItem("exelidoc_account_email", data.email);
     passwordInput.value = "";

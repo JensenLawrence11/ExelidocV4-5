@@ -36,7 +36,12 @@ def set_user_password(user_id: str, password: str) -> None:
     }).eq("id", user_id).execute()
 
 
-def create_user(email: str, tier: str = "free", password: str | None = None) -> dict:
+def create_user(
+    email: str,
+    tier: str = "free",
+    password: str | None = None,
+    password_hash: str | None = None,
+) -> dict:
     """Free tier: called directly on signup. Paid tiers: called from the
     Stripe webhook once checkout completes."""
     supabase = get_supabase()
@@ -48,7 +53,9 @@ def create_user(email: str, tier: str = "free", password: str | None = None) -> 
         "period_reset_at": (datetime.now(timezone.utc) + PERIOD_LENGTH).isoformat(),
         "session_token": token,
     }
-    if password:
+    if password_hash:
+        payload["password_hash"] = password_hash
+    elif password:
         payload["password_hash"] = hash_password(password)
     try:
         result = supabase.table("users").insert(payload).execute()
@@ -57,6 +64,38 @@ def create_user(email: str, tier: str = "free", password: str | None = None) -> 
         fallback_payload.pop("session_token", None)
         result = supabase.table("users").insert(fallback_payload).execute()
     return result.data[0]
+
+
+def create_pending_signup(
+    email: str,
+    password_hash: str,
+    verification_token_hash: str,
+    expires_at: str,
+) -> None:
+    get_supabase().table("pending_signups").upsert(
+        {
+            "email": email,
+            "password_hash": password_hash,
+            "verification_token_hash": verification_token_hash,
+            "expires_at": expires_at,
+        },
+        on_conflict="email",
+    ).execute()
+
+
+def get_pending_signup_by_token_hash(token_hash: str) -> dict | None:
+    result = (
+        get_supabase()
+        .table("pending_signups")
+        .select("*")
+        .eq("verification_token_hash", token_hash)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def delete_pending_signup(email: str) -> None:
+    get_supabase().table("pending_signups").delete().eq("email", email).execute()
 
 
 def get_user_by_api_key(api_key: str) -> dict | None:

@@ -29,6 +29,12 @@ class Config:
     OPENROUTER_SITE_NAME = os.environ.get("OPENROUTER_SITE_NAME", "")
 
     APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://exelidocv4-5.onrender.com")
+    EMAIL_SMTP_HOST = os.environ.get("EMAIL_SMTP_HOST")
+    EMAIL_SMTP_PORT = int(os.environ.get("EMAIL_SMTP_PORT", 587))
+    EMAIL_SMTP_USERNAME = os.environ.get("EMAIL_SMTP_USERNAME")
+    EMAIL_SMTP_PASSWORD = os.environ.get("EMAIL_SMTP_PASSWORD")
+    EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM_ADDRESS")
+    EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Exelidoc")
     STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
     STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
     STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
