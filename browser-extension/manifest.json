@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Exelidoc",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "On-demand AI writing help for Gmail and Google Docs.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -15,9 +15,14 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["storage"],
+  "oauth2": {
+    "client_id": "733957481846-qurs99dqiuu20o48q8f8nifeko2sl3d5.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/documents"]
+  },
+  "permissions": ["storage", "identity"],
   "host_permissions": [
-    "https://exelidocv4-5.onrender.com/*"
+    "https://exelidocv4-5.onrender.com/*",
+    "https://docs.googleapis.com/*"
   ],
   "content_scripts": [
     {

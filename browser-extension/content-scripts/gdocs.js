@@ -1,97 +1,8 @@
 let activePanel = null;
-let activeBox = null;
-let preEditSnapshot = null;
 let docsLauncher = null;
-let boundEditor = null;
-let lastDetectionState = "";
-const observedEditorDocuments = new WeakSet();
-const observedEditorFrames = new WeakSet();
 
-function getDocsEditor() {
-  const editor = document.querySelector(
-    '.kix-appview-editor[contenteditable="true"], .kix-appview-editor [contenteditable="true"], [role="textbox"][contenteditable="true"]'
-  );
-  if (editor) return editor;
-
-  for (const frame of document.querySelectorAll("iframe.docs-texteventtarget-iframe")) {
-    try {
-      const frameDocument = frame.contentDocument;
-      const frameEditor = frameDocument?.body?.matches('[contenteditable="true"]')
-        ? frameDocument.body
-        : frameDocument?.querySelector('[contenteditable="true"], [role="textbox"]');
-      if (frameEditor) return frameEditor;
-    } catch (error) {
-      console.debug("Exelidoc Docs: editor iframe is not accessible", error);
-    }
-  }
-
-  return null;
-}
-
-function getDocsDocument() {
-  return document.querySelector(".kix-appview-editor");
-}
-
-function observeEditorFrame(frame) {
-  if (observedEditorFrames.has(frame)) return;
-  observedEditorFrames.add(frame);
-  frame.addEventListener("load", () => observeEditorFrameDocument(frame));
-  observeEditorFrameDocument(frame);
-}
-
-function observeEditorFrameDocument(frame) {
-  try {
-    const frameDocument = frame.contentDocument;
-    if (!frameDocument?.documentElement || observedEditorDocuments.has(frameDocument)) return;
-    observedEditorDocuments.add(frameDocument);
-    new MutationObserver(initDocsPanel).observe(frameDocument.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["contenteditable", "role", "class"],
-    });
-  } catch (error) {
-    console.debug("Exelidoc Docs: editor iframe is not accessible", error);
-  }
-}
-
-function captureComposeSnapshot(box) {
-  if (!box) return null;
-
-  return {
-    html: box.innerHTML,
-    text: box.textContent || box.innerText || "",
-  };
-}
-
-function setComposeText(box, value) {
-  if (!box) return;
-
-  box.focus();
-  box.innerHTML = "";
-  box.textContent = value || "";
-
-  if (typeof InputEvent !== "undefined") {
-    box.dispatchEvent(new InputEvent("input", { bubbles: true, data: value || "" }));
-  }
-  box.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-function restoreComposeSnapshot(box, snapshot) {
-  if (!box || !snapshot) return;
-
-  box.focus();
-
-  if (snapshot.html !== undefined && snapshot.html !== null) {
-    box.innerHTML = snapshot.html;
-  } else {
-    box.textContent = snapshot.text || "";
-  }
-
-  if (typeof InputEvent !== "undefined") {
-    box.dispatchEvent(new InputEvent("input", { bubbles: true, data: snapshot.text || "" }));
-  }
-  box.dispatchEvent(new Event("change", { bubbles: true }));
+function getCurrentDocumentId() {
+  return window.location.pathname.match(/^\/document\/(?:u\/\d+\/)?d\/([\w-]+)/)?.[1] || null;
 }
 
 function ensureDocsLauncher() {
@@ -118,14 +29,9 @@ function ensureDocsLauncher() {
 }
 
 function openDocsPanel() {
-  const editor = getDocsEditor();
-  if (editor && editor !== activeBox) setActiveBox(editor);
   if (!activePanel) activePanel = createExelidocPanel();
   setDocsPanelOpen(true);
-  console.info("Exelidoc Docs: panel opened", { editorDetected: Boolean(activeBox) });
-  if (!activeBox) {
-    activePanel.querySelector(".exelidoc-status").textContent = "Click in the document to connect Exelidoc.";
-  }
+  console.info("Exelidoc Docs: panel opened", { documentDetected: Boolean(getCurrentDocumentId()) });
 }
 
 function setDocsPanelOpen(isOpen) {
@@ -135,35 +41,6 @@ function setDocsPanelOpen(isOpen) {
   docsLauncher?.setAttribute("aria-label", isOpen ? "Close Exelidoc panel" : "Open Exelidoc panel");
 }
 
-function setActiveBox(box) {
-  const sameBox = activeBox === box;
-  activeBox = box;
-
-  if (!box) {
-    preEditSnapshot = null;
-    setDocsPanelOpen(false);
-    return;
-  }
-
-  if (!sameBox) {
-    preEditSnapshot = null;
-  }
-
-  if (!activePanel) activePanel = createExelidocPanel();
-  resetPanelState(activePanel);
-  setDocsPanelOpen(true);
-  positionPanel(activePanel, box);
-}
-
-function positionPanel(panel, box) {
-  if (!panel) return;
-  panel.classList.add("docs-mode");
-  panel.style.top = "auto";
-  panel.style.right = "auto";
-  panel.style.left = "22px";
-  panel.style.bottom = "72px";
-}
-
 function createExelidocPanel() {
   const panel = document.createElement("div");
   panel.className = "exelidoc-panel docs-mode";
@@ -171,6 +48,7 @@ function createExelidocPanel() {
   panel.innerHTML = `
     <div class="exelidoc-panel-header"><span>Exelidoc</span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
     <textarea class="exelidoc-query" placeholder="e.g. write a section, rewrite this, make it more concise"></textarea>
+    <div class="exelidoc-docs-note">Rewrites the full plain-text document. Formatting resets; tables and embedded objects are unsupported.</div>
     <button class="exelidoc-submit">Ask</button>
     <button class="exelidoc-undo" hidden>Undo</button>
     <div class="exelidoc-status"></div>
@@ -189,6 +67,7 @@ function createExelidocPanel() {
   const undoEl = panel.querySelector(".exelidoc-undo");
   const statusEl = panel.querySelector(".exelidoc-status");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
+  let previousText = null;
   panel.querySelector(".exelidoc-close").addEventListener("click", () => setDocsPanelOpen(false));
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
@@ -233,29 +112,23 @@ function createExelidocPanel() {
   });
 
   submitEl.addEventListener("click", () => {
-    console.info("Exelidoc Docs: Ask clicked", { editorDetected: Boolean(activeBox) });
-    if (!activeBox) {
-      console.warn("Exelidoc Docs: request stopped; no editable document detected");
-      statusEl.textContent = "Click in the document to connect Exelidoc.";
+    const documentId = getCurrentDocumentId();
+    const instruction = queryEl.value.trim();
+    if (!documentId) {
+      statusEl.textContent = "Open a Google Docs document and try again.";
       return;
     }
-    const instruction = queryEl.value.trim();
-    const text = (activeBox.innerText || "").trim();
     if (!instruction) {
-      console.warn("Exelidoc Docs: request stopped; instruction is empty");
       statusEl.textContent = "Enter an instruction before clicking Ask.";
       return;
     }
 
     statusEl.textContent = "Thinking...";
     submitEl.disabled = true;
-    console.info("Exelidoc Docs: sending analysis request", {
-      textLength: text.length,
-      instructionLength: instruction.length,
-    });
+    console.info("Exelidoc Docs: sending Docs API request", { documentId });
 
     chrome.runtime.sendMessage(
-      { type: "ANALYZE_TEXT", text, instruction, historyIds: history.selectedIds() },
+      { type: "ANALYZE_GOOGLE_DOC", documentId, instruction, historyIds: history.selectedIds() },
       (response) => {
         submitEl.disabled = false;
         if (chrome.runtime.lastError) {
@@ -265,44 +138,46 @@ function createExelidocPanel() {
         }
         if (!response || !response.ok) {
           console.warn("Exelidoc Docs: analysis request failed", response && response.error);
-          statusEl.textContent = response && response.error === "no_session"
-            ? "Sign in to Exelidoc from the toolbar popup first."
-            : `Error: ${response ? response.error : "no response"}`;
+          if (response?.error === "no_session") {
+            statusEl.textContent = "Sign in to Exelidoc from the toolbar popup first.";
+          } else if (response?.error === "Google Docs OAuth is not configured for this extension.") {
+            statusEl.textContent = "Google Docs OAuth is not configured. Add the extension OAuth client ID, then reload it.";
+          } else {
+            statusEl.textContent = `Error: ${response ? response.error : "no response"}`;
+          }
           return;
         }
-        if (response.data && response.data.error) {
-          console.warn("Exelidoc Docs: backend returned an analysis error", response.data.error);
-          statusEl.textContent = `Error: ${response.data.error}`;
-          return;
-        }
-        console.info("Exelidoc Docs: analysis response received");
+        console.info("Exelidoc Docs: Docs API request completed");
         history.refresh();
-        if (!activeBox) return;
-
-        statusEl.textContent = "";
-        const suggestions = Array.isArray(response.data.suggestions) ? response.data.suggestions : [];
-        const corrected = response.data.corrected || (suggestions[0] && suggestions[0].revised) || text;
-
-        if (!corrected || corrected === text) {
-          statusEl.textContent = "No changes suggested.";
+        if (!response.changed) {
+          statusEl.textContent = "The document was unchanged.";
           return;
         }
-
-        preEditSnapshot = captureComposeSnapshot(activeBox);
-        setComposeText(activeBox, corrected);
+        previousText = response.previousText;
         undoEl.hidden = false;
-        statusEl.textContent = "Updated document.";
+        statusEl.textContent = "Done. The document was updated.";
       }
     );
   });
 
   undoEl.addEventListener("click", () => {
-    if (activeBox && preEditSnapshot) {
-      restoreComposeSnapshot(activeBox, preEditSnapshot);
-      preEditSnapshot = null;
-      undoEl.hidden = true;
-      statusEl.textContent = "Restored previous draft.";
-    }
+    const documentId = getCurrentDocumentId();
+    if (!documentId || previousText === null) return;
+    undoEl.disabled = true;
+    statusEl.textContent = "Restoring the previous document...";
+    chrome.runtime.sendMessage(
+      { type: "RESTORE_GOOGLE_DOC", documentId, text: previousText },
+      (response) => {
+        undoEl.disabled = false;
+        if (chrome.runtime.lastError || !response?.ok) {
+          statusEl.textContent = `Could not restore the document: ${response?.error || chrome.runtime.lastError?.message || "no response"}`;
+          return;
+        }
+        previousText = null;
+        undoEl.hidden = true;
+        statusEl.textContent = "Restored the previous document text.";
+      }
+    );
   });
 
   document.body.appendChild(panel);
@@ -318,40 +193,10 @@ function resetPanelState(panel) {
 
 function initDocsPanel() {
   ensureDocsLauncher();
-  document.querySelectorAll("iframe.docs-texteventtarget-iframe").forEach(observeEditorFrame);
-  const docsDocument = getDocsDocument();
-  const editor = getDocsEditor();
-  const detectionState = `${Boolean(docsDocument)}:${Boolean(editor)}`;
-  if (detectionState !== lastDetectionState) {
-    lastDetectionState = detectionState;
-    console.info("Exelidoc Docs: document detection", {
-      documentDetected: Boolean(docsDocument),
-      editableSurfaceDetected: Boolean(editor),
-    });
-  }
-  if (!editor) {
-    if (docsDocument && activePanel) {
-      activePanel.querySelector(".exelidoc-status").textContent = "Document detected; waiting for Google Docs' editable surface.";
-    }
-    return;
-  }
-  if (editor === boundEditor) return;
-  boundEditor = editor;
-  editor.addEventListener("focus", () => setActiveBox(editor));
-  setActiveBox(editor);
+  console.info("Exelidoc Docs: content script ready", {
+    documentDetected: Boolean(getCurrentDocumentId()),
+    version: chrome.runtime.getManifest().version,
+  });
 }
 
-const docsObserver = new MutationObserver(() => {
-  initDocsPanel();
-});
-docsObserver.observe(document.body, {
-  childList: true,
-  subtree: true,
-  attributes: true,
-  attributeFilter: ["contenteditable", "role", "class"],
-});
-
 initDocsPanel();
-console.info("Exelidoc Docs: content script loaded", {
-  version: chrome.runtime.getManifest().version,
-});

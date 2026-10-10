@@ -92,6 +92,19 @@ npm start                         # sideloads into Excel, serves on https://loca
 ### Browser Extension
 Chrome/Edge → `chrome://extensions` → Enable Developer Mode → Load Unpacked → select `browser-extension/`
 
+#### Google Docs API setup
+
+The Chrome extension edits Docs through the Google Docs API. The manifest's
+`oauth2` section contains the Chrome Extension OAuth client ID and the
+`https://www.googleapis.com/auth/documents` scope. In Google Cloud, enable the
+Google Docs API and register the published Chrome Web Store extension ID on that
+OAuth client. For unpacked development, register its separate extension ID with
+a development OAuth client. The extension requests Google Docs access when the user clicks Ask. Google
+OAuth consent configuration and any required verification must be completed
+before publishing this permission. The API currently replaces the full plain-text
+document; selected-range editing and original formatting are not preserved.
+Documents containing tables or embedded objects are rejected without changes.
+
 
 ### Website
 Just open `website/index.html`, or `python -m http.server` from inside `website/`.
