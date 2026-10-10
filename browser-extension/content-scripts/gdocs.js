@@ -3,9 +3,56 @@ let activeBox = null;
 let preEditSnapshot = null;
 let docsLauncher = null;
 let boundEditor = null;
+let lastDetectionState = "";
+const observedEditorDocuments = new WeakSet();
+const observedEditorFrames = new WeakSet();
 
 function getDocsEditor() {
-  return document.querySelector('.kix-appview-editor[contenteditable="true"], [role="textbox"][contenteditable="true"]');
+  const editor = document.querySelector(
+    '.kix-appview-editor[contenteditable="true"], .kix-appview-editor [contenteditable="true"], [role="textbox"][contenteditable="true"]'
+  );
+  if (editor) return editor;
+
+  for (const frame of document.querySelectorAll("iframe.docs-texteventtarget-iframe")) {
+    try {
+      const frameDocument = frame.contentDocument;
+      const frameEditor = frameDocument?.body?.matches('[contenteditable="true"]')
+        ? frameDocument.body
+        : frameDocument?.querySelector('[contenteditable="true"], [role="textbox"]');
+      if (frameEditor) return frameEditor;
+    } catch (error) {
+      console.debug("Exelidoc Docs: editor iframe is not accessible", error);
+    }
+  }
+
+  return null;
+}
+
+function getDocsDocument() {
+  return document.querySelector(".kix-appview-editor");
+}
+
+function observeEditorFrame(frame) {
+  if (observedEditorFrames.has(frame)) return;
+  observedEditorFrames.add(frame);
+  frame.addEventListener("load", () => observeEditorFrameDocument(frame));
+  observeEditorFrameDocument(frame);
+}
+
+function observeEditorFrameDocument(frame) {
+  try {
+    const frameDocument = frame.contentDocument;
+    if (!frameDocument?.documentElement || observedEditorDocuments.has(frameDocument)) return;
+    observedEditorDocuments.add(frameDocument);
+    new MutationObserver(initDocsPanel).observe(frameDocument.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["contenteditable", "role", "class"],
+    });
+  } catch (error) {
+    console.debug("Exelidoc Docs: editor iframe is not accessible", error);
+  }
 }
 
 function captureComposeSnapshot(box) {
@@ -271,8 +318,23 @@ function resetPanelState(panel) {
 
 function initDocsPanel() {
   ensureDocsLauncher();
+  document.querySelectorAll("iframe.docs-texteventtarget-iframe").forEach(observeEditorFrame);
+  const docsDocument = getDocsDocument();
   const editor = getDocsEditor();
-  if (!editor) return;
+  const detectionState = `${Boolean(docsDocument)}:${Boolean(editor)}`;
+  if (detectionState !== lastDetectionState) {
+    lastDetectionState = detectionState;
+    console.info("Exelidoc Docs: document detection", {
+      documentDetected: Boolean(docsDocument),
+      editableSurfaceDetected: Boolean(editor),
+    });
+  }
+  if (!editor) {
+    if (docsDocument && activePanel) {
+      activePanel.querySelector(".exelidoc-status").textContent = "Document detected; waiting for Google Docs' editable surface.";
+    }
+    return;
+  }
   if (editor === boundEditor) return;
   boundEditor = editor;
   editor.addEventListener("focus", () => setActiveBox(editor));
@@ -282,12 +344,11 @@ function initDocsPanel() {
 const docsObserver = new MutationObserver(() => {
   initDocsPanel();
 });
-docsObserver.observe(document.body, { childList: true, subtree: true });
-
-document.addEventListener("click", (event) => {
-  if (event.target instanceof Element && event.target.closest(".kix-appview-editor")) {
-    openDocsPanel();
-  }
+docsObserver.observe(document.body, {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  attributeFilter: ["contenteditable", "role", "class"],
 });
 
 initDocsPanel();
