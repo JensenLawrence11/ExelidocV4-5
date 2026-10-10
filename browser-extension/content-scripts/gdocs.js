@@ -5,7 +5,21 @@ let docsLauncher = null;
 let boundEditor = null;
 
 function getDocsEditor() {
-  return document.querySelector('.kix-appview-editor[contenteditable="true"], [role="textbox"][contenteditable="true"]');
+  const editor = document.querySelector('.kix-appview-editor[contenteditable="true"], [role="textbox"][contenteditable="true"]');
+  if (editor) return editor;
+
+  for (const frame of document.querySelectorAll("iframe.docs-texteventtarget-iframe")) {
+    try {
+      const frameEditor = frame.contentDocument?.body;
+      if (frameEditor?.isContentEditable || frameEditor?.getAttribute("contenteditable") === "true") {
+        return frameEditor;
+      }
+    } catch (error) {
+      console.debug("Exelidoc Docs: editor iframe is not accessible", error);
+    }
+  }
+
+  return null;
 }
 
 function captureComposeSnapshot(box) {
@@ -21,14 +35,15 @@ function setComposeText(box, value) {
   if (!box) return;
 
   box.focus();
-  const selection = window.getSelection();
+  const editorDocument = box.ownerDocument || document;
+  const selection = editorDocument.getSelection();
   if (selection) {
-    const range = document.createRange();
+    const range = editorDocument.createRange();
     range.selectNodeContents(box);
     selection.removeAllRanges();
     selection.addRange(range);
   }
-  return document.execCommand("insertText", false, value || "");
+  return editorDocument.execCommand("insertText", false, value || "");
 }
 
 function restoreComposeSnapshot(box, snapshot) {
