@@ -71,10 +71,12 @@ function ensureDocsLauncher() {
 
 function openDocsPanel() {
   const editor = getDocsEditor();
-  if (!editor) return;
   if (editor && editor !== activeBox) setActiveBox(editor);
   if (!activePanel) activePanel = createExelidocPanel();
   setDocsPanelOpen(true);
+  if (!activeBox) {
+    activePanel.querySelector(".exelidoc-status").textContent = "Click in the document to connect Exelidoc.";
+  }
 }
 
 function setDocsPanelOpen(isOpen) {
@@ -180,7 +182,10 @@ function createExelidocPanel() {
   });
 
   submitEl.addEventListener("click", () => {
-    if (!activeBox) return;
+    if (!activeBox) {
+      statusEl.textContent = "Click in the document to connect Exelidoc.";
+      return;
+    }
     const instruction = queryEl.value.trim();
     const text = (activeBox.innerText || "").trim();
     if (!instruction) return;
@@ -246,9 +251,9 @@ function resetPanelState(panel) {
 }
 
 function initDocsPanel() {
+  ensureDocsLauncher();
   const editor = getDocsEditor();
   if (!editor) return;
-  ensureDocsLauncher();
   if (editor === boundEditor) return;
   boundEditor = editor;
   setActiveBox(editor);
