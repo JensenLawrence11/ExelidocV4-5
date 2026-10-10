@@ -21,13 +21,14 @@ function setComposeText(box, value) {
   if (!box) return;
 
   box.focus();
-  box.innerHTML = "";
-  box.textContent = value || "";
-
-  if (typeof InputEvent !== "undefined") {
-    box.dispatchEvent(new InputEvent("input", { bubbles: true, data: value || "" }));
+  const selection = window.getSelection();
+  if (selection) {
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
-  box.dispatchEvent(new Event("change", { bubbles: true }));
+  return document.execCommand("insertText", false, value || "");
 }
 
 function restoreComposeSnapshot(box, snapshot) {
@@ -35,16 +36,7 @@ function restoreComposeSnapshot(box, snapshot) {
 
   box.focus();
 
-  if (snapshot.html !== undefined && snapshot.html !== null) {
-    box.innerHTML = snapshot.html;
-  } else {
-    box.textContent = snapshot.text || "";
-  }
-
-  if (typeof InputEvent !== "undefined") {
-    box.dispatchEvent(new InputEvent("input", { bubbles: true, data: snapshot.text || "" }));
-  }
-  box.dispatchEvent(new Event("change", { bubbles: true }));
+  setComposeText(box, snapshot.text || "");
 }
 
 function ensureDocsLauncher() {
@@ -224,8 +216,13 @@ function createExelidocPanel() {
         }
 
         preEditSnapshot = captureComposeSnapshot(activeBox);
-        setComposeText(activeBox, corrected);
+        if (!setComposeText(activeBox, corrected)) {
+          preEditSnapshot = null;
+          statusEl.textContent = "Google Docs did not accept the edit. Try clicking in the document and asking again.";
+          return;
+        }
         undoEl.hidden = false;
+        statusEl.textContent = "Updated document.";
       }
     );
   });
