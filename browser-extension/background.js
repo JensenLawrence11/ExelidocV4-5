@@ -31,12 +31,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "ANALYZE_TEXT") {
+    console.info("Exelidoc background: analysis message received");
     chrome.storage.local.get(["sessionToken"], ({ sessionToken }) => {
       if (!sessionToken) {
+        console.warn("Exelidoc background: request stopped; no saved session");
         sendResponse({ ok: false, error: "no_session" });
         return;
       }
 
+      console.info("Exelidoc background: posting analysis request");
       fetch(`${BACKEND_URL}/api/ai/analyze-text`, {
         method: "POST",
         headers: {
@@ -51,6 +54,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }),
       })
         .then(async (res) => {
+          console.info("Exelidoc background: backend responded", { status: res.status });
           let data = {};
           const raw = await res.text();
           if (raw) {
@@ -68,7 +72,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           sendResponse({ ok: true, data });
         })
-        .catch((err) => sendResponse({ ok: false, error: String(err) }));
+        .catch((err) => {
+          console.error("Exelidoc background: backend request failed", String(err));
+          sendResponse({ ok: false, error: String(err) });
+        });
     });
 
     return true;

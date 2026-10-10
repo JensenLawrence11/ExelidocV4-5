@@ -50,6 +50,7 @@ function ensureDocsLauncher() {
   button.setAttribute("aria-expanded", "false");
   button.setAttribute("aria-controls", "exelidoc-docs-panel");
   button.addEventListener("click", () => {
+    console.info("Exelidoc Docs: launcher clicked");
     if (activePanel && window.getComputedStyle(activePanel).display !== "none") {
       setDocsPanelOpen(false);
     } else {
@@ -66,6 +67,7 @@ function openDocsPanel() {
   if (editor && editor !== activeBox) setActiveBox(editor);
   if (!activePanel) activePanel = createExelidocPanel();
   setDocsPanelOpen(true);
+  console.info("Exelidoc Docs: panel opened", { editorDetected: Boolean(activeBox) });
   if (!activeBox) {
     activePanel.querySelector(".exelidoc-status").textContent = "Click in the document to connect Exelidoc.";
   }
@@ -174,35 +176,49 @@ function createExelidocPanel() {
   });
 
   submitEl.addEventListener("click", () => {
+    console.info("Exelidoc Docs: Ask clicked", { editorDetected: Boolean(activeBox) });
     if (!activeBox) {
+      console.warn("Exelidoc Docs: request stopped; no editable document detected");
       statusEl.textContent = "Click in the document to connect Exelidoc.";
       return;
     }
     const instruction = queryEl.value.trim();
     const text = (activeBox.innerText || "").trim();
-    if (!instruction) return;
+    if (!instruction) {
+      console.warn("Exelidoc Docs: request stopped; instruction is empty");
+      statusEl.textContent = "Enter an instruction before clicking Ask.";
+      return;
+    }
 
     statusEl.textContent = "Thinking...";
     submitEl.disabled = true;
+    console.info("Exelidoc Docs: sending analysis request", {
+      textLength: text.length,
+      instructionLength: instruction.length,
+    });
 
     chrome.runtime.sendMessage(
       { type: "ANALYZE_TEXT", text, instruction, historyIds: history.selectedIds() },
       (response) => {
         submitEl.disabled = false;
         if (chrome.runtime.lastError) {
+          console.error("Exelidoc Docs: service worker message failed", chrome.runtime.lastError.message);
           statusEl.textContent = "Extension reloaded — refresh this page.";
           return;
         }
         if (!response || !response.ok) {
+          console.warn("Exelidoc Docs: analysis request failed", response && response.error);
           statusEl.textContent = response && response.error === "no_session"
             ? "Sign in to Exelidoc from the toolbar popup first."
             : `Error: ${response ? response.error : "no response"}`;
           return;
         }
         if (response.data && response.data.error) {
+          console.warn("Exelidoc Docs: backend returned an analysis error", response.data.error);
           statusEl.textContent = `Error: ${response.data.error}`;
           return;
         }
+        console.info("Exelidoc Docs: analysis response received");
         history.refresh();
         if (!activeBox) return;
 
@@ -269,3 +285,6 @@ document.addEventListener("click", (event) => {
 });
 
 initDocsPanel();
+console.info("Exelidoc Docs: content script loaded", {
+  version: chrome.runtime.getManifest().version,
+});
