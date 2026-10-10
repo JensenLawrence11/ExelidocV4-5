@@ -104,6 +104,10 @@ OAuth consent configuration and any required verification must be completed
 before publishing this permission. The API currently replaces the full plain-text
 document; selected-range editing and original formatting are not preserved.
 Documents containing tables or embedded objects are rejected without changes.
+The checked-in manifest currently uses the unpacked development client
+`733957481846-72v784csg244sum7vrthd2j10cdg29am.apps.googleusercontent.com`.
+Before preparing a Web Store package, change it to the published extension's
+client `733957481846-qurs99dqiuu20o48q8f8nifeko2sl3d5.apps.googleusercontent.com`.
 
 
 ### Website
