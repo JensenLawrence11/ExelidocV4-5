@@ -10,14 +10,14 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --ink: #17231d;
-      --ink-soft: #263a30;
-      --leaf: #b9ef68;
-      --leaf-dark: #8dcb3e;
-      --paper: #f4f4ed;
+      --ink: #0b0e10;
+      --ink-soft: #192123;
+      --teal: #45d3cf;
+      --teal-dark: #16a6a2;
+      --paper: #f5f8f8;
       --white: #fff;
-      --muted: #68736a;
-      --line: #d9ded4;
+      --muted: #657274;
+      --line: #d9e2e2;
       --coral: #e77e5e;
       --sans: "DM Sans", "Segoe UI", sans-serif;
       --display: "Manrope", "Segoe UI", sans-serif;
@@ -30,88 +30,92 @@
     button, input { font: inherit; }
     .site-nav { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px max(24px, calc((100vw - 1160px) / 2)); background: var(--paper); }
     .wordmark { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font: 800 18px/1 var(--display); text-decoration: none; }
-    .wordmark-mark { display: grid; width: 30px; height: 30px; place-items: center; background: var(--leaf); color: var(--ink); font: 800 15px var(--display); }
+    .wordmark-logo { width: 36px; height: 36px; object-fit: contain; }
     .nav-links { display: flex; align-items: center; gap: 26px; }
     .nav-links a { color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: none; }
     .nav-links a:hover { color: var(--ink); }
-    .nav-cta, .button { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; padding: 0 20px; border: 0; background: var(--leaf); color: var(--ink); font-weight: 700; text-decoration: none; cursor: pointer; transition: background .18s ease, transform .18s ease; }
+    .nav-cta, .button { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; padding: 0 20px; border: 0; background: var(--teal); color: var(--ink); font-weight: 700; text-decoration: none; cursor: pointer; transition: background .18s ease, transform .18s ease; }
     .nav-cta { min-height: 38px; padding: 0 15px; font-size: 13px; }
-    .nav-cta:hover, .button:hover { background: var(--leaf-dark); transform: translateY(-1px); }
+    .nav-cta:hover, .button:hover { background: var(--teal-dark); transform: translateY(-1px); }
     .hero { position: relative; overflow: hidden; padding: 86px 24px 92px; background: var(--ink); color: var(--paper); }
-    .hero::after { position: absolute; right: -110px; bottom: -300px; width: 610px; height: 610px; border: 1px solid rgba(185,239,104,.22); content: ""; transform: rotate(38deg); pointer-events: none; }
+    .hero::after { position: absolute; right: -110px; bottom: -300px; width: 610px; height: 610px; border: 1px solid rgba(69,211,207,.22); content: ""; transform: rotate(38deg); pointer-events: none; }
     .hero-inner { position: relative; z-index: 1; display: grid; max-width: 1160px; grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr); align-items: center; gap: 70px; margin: 0 auto; }
-    .eyebrow { display: inline-flex; align-items: center; gap: 9px; color: var(--leaf); font: 500 11px var(--mono); text-transform: uppercase; }
-    .eyebrow::before { width: 7px; height: 7px; background: var(--leaf); content: ""; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 9px; color: var(--teal); font: 500 11px var(--mono); text-transform: uppercase; }
+    .eyebrow::before { width: 7px; height: 7px; background: var(--teal); content: ""; }
     h1, h2, h3 { font-family: var(--display); }
     h1 { max-width: 700px; margin: 20px 0 18px; font-size: 56px; line-height: 1.07; font-weight: 700; }
-    .hero-copy { max-width: 520px; margin: 0 0 28px; color: #c4cec4; font-size: 18px; }
+    .hero-copy { max-width: 520px; margin: 0 0 28px; color: #c7d1d1; font-size: 18px; }
     .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
     .text-link { color: var(--paper); font-size: 14px; font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 4px; }
-    .hero-note { margin: 22px 0 0; color: #aab7aa; font-size: 12px; }
-    .demo-window { position: relative; padding: 18px; border: 1px solid #44534a; background: #202f27; box-shadow: 16px 16px 0 rgba(185,239,104,.12); }
-    .demo-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid #3c4b42; color: #c8d2c9; font: 11px var(--mono); }
+    .hero-note { margin: 22px 0 0; color: #aab8b8; font-size: 12px; }
+    .demo-window { position: relative; padding: 18px; border: 1px solid #465456; background: #20292a; box-shadow: 16px 16px 0 rgba(69,211,207,.14); }
+    .demo-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid #3d4b4c; color: #cbd5d5; font: 11px var(--mono); }
+    .demo-brand { display: inline-flex; align-items: center; gap: 8px; }
+    .demo-brand img { width: 24px; height: 24px; object-fit: contain; }
     .demo-dots { display: flex; gap: 5px; }
-    .demo-dots i { width: 6px; height: 6px; background: #77857a; }
+    .demo-dots i { width: 6px; height: 6px; background: #829091; }
     .demo-body { display: grid; grid-template-columns: 1fr 155px; gap: 12px; padding-top: 16px; }
-    .demo-document { min-height: 184px; padding: 14px; background: #f8f8f2; color: var(--ink); }
+    .demo-document { min-height: 184px; padding: 14px; background: #fff; color: var(--ink); }
     .demo-document strong { display: block; margin-bottom: 12px; font: 700 12px var(--display); }
-    .demo-document span { display: block; width: 100%; height: 5px; margin: 9px 0; background: #dfe4dc; }
+    .demo-document span { display: block; width: 100%; height: 5px; margin: 9px 0; background: #e1e7e7; }
     .demo-document span.short { width: 68%; }
     .demo-panel { padding: 12px 10px; background: #fff; color: var(--ink); }
     .demo-panel b { display: block; margin-bottom: 9px; font: 700 11px var(--display); }
-    .demo-prompt { min-height: 66px; padding: 8px; border: 1px solid var(--line); color: #737d73; font-size: 10px; }
-    .demo-ask { display: block; margin-top: 9px; padding: 6px 10px; background: var(--leaf); color: var(--ink); font: 700 10px var(--sans); text-align: center; }
-    .demo-caption { margin: 12px 0 0; color: #aab7aa; font: 10px var(--mono); }
+    .demo-prompt { min-height: 66px; padding: 8px; border: 1px solid var(--line); color: #747f80; font-size: 10px; }
+    .demo-ask { display: block; margin-top: 9px; padding: 6px 10px; background: var(--teal); color: var(--ink); font: 700 10px var(--sans); text-align: center; }
+    .demo-caption { margin: 12px 0 0; color: #aab8b8; font: 10px var(--mono); }
     .section { padding: 76px 24px; }
     .section-inner { max-width: 1160px; margin: 0 auto; }
-    .section-kicker { margin: 0 0 10px; color: #51704d; font: 500 11px var(--mono); text-transform: uppercase; }
+    .section-kicker { margin: 0 0 10px; color: #147f7c; font: 500 11px var(--mono); text-transform: uppercase; }
     .section-heading { max-width: 640px; margin: 0 0 14px; font-size: 34px; line-height: 1.15; }
     .section-intro { max-width: 650px; margin: 0; color: var(--muted); }
     .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 34px; border: 1px solid var(--line); background: var(--line); }
     .feature { min-height: 205px; padding: 26px; background: var(--paper); }
-    .feature-index { display: block; margin-bottom: 22px; color: #61844b; font: 11px var(--mono); }
+    .feature-index { display: block; margin-bottom: 22px; color: #168985; font: 11px var(--mono); }
     .feature h3 { margin: 0 0 9px; font-size: 18px; }
     .feature p { margin: 0; color: var(--muted); font-size: 14px; }
-    .install-band { background: #e8ece2; }
+    .install-band { background: #e9f0f0; }
     .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
     .install-steps { margin: 0; padding: 0; list-style: none; counter-reset: steps; }
-    .install-steps li { display: grid; grid-template-columns: 36px 1fr; gap: 14px; padding: 16px 0; border-bottom: 1px solid #cbd3c7; counter-increment: steps; }
-    .install-steps li::before { color: #648c4a; content: "0" counter(steps); font: 11px var(--mono); }
+    .install-steps li { display: grid; grid-template-columns: 36px 1fr; gap: 14px; padding: 16px 0; border-bottom: 1px solid #cbd7d7; counter-increment: steps; }
+    .install-steps li::before { color: #167f7c; content: "0" counter(steps); font: 11px var(--mono); }
     .install-steps strong { display: block; margin-bottom: 3px; font-size: 14px; }
     .install-steps span { color: var(--muted); font-size: 13px; }
-    code { padding: 2px 5px; background: #dce4d7; font: 12px var(--mono); }
+    code { padding: 2px 5px; background: #dce8e8; font: 12px var(--mono); }
     .download-box { padding: 26px; background: var(--ink); color: var(--paper); }
     .download-box h3 { margin: 0 0 9px; font-size: 20px; }
-    .download-box p { margin: 0 0 20px; color: #c4cec4; font-size: 14px; }
+    .download-box p { margin: 0 0 20px; color: #c7d1d1; font-size: 14px; }
     .download-box .button { width: 100%; }
-    .beta-note { margin-top: 15px !important; color: #adbaad !important; font-size: 12px !important; }
-    .preview-warning { margin-top: 12px !important; padding-top: 12px; border-top: 1px solid #44534a; }
+    .beta-note { margin-top: 15px !important; color: #afc0c0 !important; font-size: 12px !important; }
+    .preview-warning { margin-top: 12px !important; padding-top: 12px; border-top: 1px solid #465456; }
     .plans { background: var(--paper); }
     .plans-head { display: flex; align-items: end; justify-content: space-between; gap: 28px; }
     .plans-head .section-intro { max-width: 420px; }
     .plan-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 34px; }
     .plan { display: flex; min-height: 245px; flex-direction: column; padding: 24px; border: 1px solid var(--line); background: var(--white); }
-    .plan.featured { border-color: var(--ink); box-shadow: inset 0 4px var(--leaf-dark); }
-    .plan-name { color: #60814b; font: 500 11px var(--mono); text-transform: uppercase; }
+    .plan.featured { border-color: var(--ink); box-shadow: inset 0 4px var(--teal-dark); }
+    .plan-name { color: #147f7c; font: 500 11px var(--mono); text-transform: uppercase; }
     .plan h3 { margin: 12px 0 4px; font-size: 23px; }
     .plan-limit { margin: 0; color: var(--muted); font-size: 13px; }
     .plan .button { width: 100%; margin-top: auto; }
     .plan .button.secondary { border: 1px solid var(--line); background: var(--paper); }
-    .plan .button.secondary:hover { background: #e8ece2; }
+    .plan .button.secondary:hover { background: #e9f0f0; }
     .billing-form { display: flex; max-width: 540px; gap: 9px; margin-top: 28px; }
-    .billing-form input { min-width: 0; min-height: 46px; flex: 1; padding: 0 13px; border: 1px solid #bcc6ba; background: #fff; color: var(--ink); }
-    .billing-form input:focus { outline: 2px solid var(--leaf-dark); outline-offset: 1px; }
+    .billing-form input { min-width: 0; min-height: 46px; flex: 1; padding: 0 13px; border: 1px solid #bacaca; background: #fff; color: var(--ink); }
+    .billing-form input:focus { outline: 2px solid var(--teal-dark); outline-offset: 1px; }
     .billing-error { min-height: 20px; margin: 10px 0 0; color: #a13d2b; font-size: 13px; }
     .privacy-band { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 32px; background: var(--ink-soft); color: var(--paper); }
     .privacy-band .section-inner { display: contents; }
     .privacy-band h2 { margin: 0 0 8px; font-size: 26px; }
-    .privacy-band p { max-width: 700px; margin: 0; color: #c4cec4; font-size: 14px; }
-    .privacy-band a { color: var(--leaf); font-weight: 700; text-underline-offset: 4px; }
-    .site-footer { padding: 28px 24px; background: #101914; color: #b4beb4; text-align: center; }
+    .privacy-band p { max-width: 700px; margin: 0; color: #c7d1d1; font-size: 14px; }
+    .privacy-band a { color: var(--teal); font-weight: 700; text-underline-offset: 4px; }
+    .site-footer { padding: 28px 24px; background: #101516; color: #b8c3c3; text-align: center; }
+    .footer-brand { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #fff; font: 700 14px var(--display); }
+    .footer-brand img { width: 28px; height: 28px; object-fit: contain; }
     .footer-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 16px; margin-bottom: 14px; font-size: 12px; }
-    .footer-links a { color: #d3dbd2; text-decoration: none; }
+    .footer-links a { color: #d3dddd; text-decoration: none; }
     .copyright { margin: 0; font: 10px var(--mono); }
-    .site-status { max-width: 720px; margin: 12px auto 0; color: #95a295; font-size: 11px; }
+    .site-status { max-width: 720px; margin: 12px auto 0; color: #9aa9a9; font-size: 11px; }
     @media (max-width: 760px) {
       .site-nav { padding: 14px 18px; }
       .nav-links { gap: 12px; }
@@ -145,7 +149,7 @@
 </head>
 <body>
   <nav class="site-nav" aria-label="Main navigation">
-    <a class="wordmark" href="index.html"><span class="wordmark-mark" aria-hidden="true">E</span>Exelidoc</a>
+    <a class="wordmark" href="index.html"><img class="wordmark-logo" src="assets/brand-icon-128.png" alt="" />Exelidoc</a>
     <div class="nav-links">
       <a href="#features">What it does</a>
       <a href="#install">Install</a>
@@ -167,7 +171,7 @@
         <p class="hero-note">On-demand changes. You choose what to send and when to apply it.</p>
       </div>
       <div class="demo-window" role="img" aria-label="Illustration of a document beside the Exelidoc writing panel">
-        <div class="demo-top"><span class="demo-dots"><i></i><i></i><i></i></span><span>YOUR DOCUMENT · EXELIDOC</span></div>
+        <div class="demo-top"><span class="demo-brand"><img src="assets/brand-icon-128.png" alt="" />EXELIDOC</span><span>YOUR DOCUMENT</span></div>
         <div class="demo-body">
           <div class="demo-document"><strong>Project update</strong><span></span><span></span><span class="short"></span><span></span><span class="short"></span></div>
           <div class="demo-panel"><b>Exelidoc</b><div class="demo-prompt">Make this clearer and more concise...</div><span class="demo-ask">Ask</span></div>
@@ -196,9 +200,9 @@
         <div>
           <p class="section-kicker">Chrome Web Store</p>
           <h2 class="section-heading">A direct Chrome install is next.</h2>
-          <p class="section-intro">The extension is being prepared for the Chrome Web Store. Once the listing is approved, you will be able to install it directly in Chrome without downloading Git files or using Developer mode.</p>
+          <p class="section-intro">Install Exelidoc directly from the Chrome Web Store. No ZIP download or Developer mode setup is needed.</p>
           <ol class="install-steps">
-            <li><div><strong>Install from Chrome Web Store</strong><span>Open the Exelidoc listing and choose Add to Chrome.</span></div></li>
+            <li><div><strong>Install from Chrome Web Store</strong><span>Choose Add to Chrome on the Exelidoc listing.</span></div></li>
             <li><div><strong>Open Exelidoc</strong><span>Choose the Exelidoc icon beside Chrome's address bar.</span></div></li>
             <li><div><strong>Create your free account</strong><span>Enter your email in the extension popup. Your session is saved in Chrome.</span></div></li>
             <li><div><strong>Use it in Gmail or Google Docs</strong><span>Open a draft or document and ask Exelidoc to help with text.</span></div></li>
@@ -207,7 +211,7 @@
         <aside class="download-box">
           <h3>Gmail + Google Docs</h3>
           <p>One Chrome extension adds an on-demand writing panel to Gmail compose and Google Docs.</p>
-          <span class="button store-status" aria-disabled="true">Chrome listing coming soon</span>
+          <a class="button store-status" href="https://chromewebstore.google.com/detail/exelidoc/mpnfmcgpnphnjcjpkabghpbjnoocpadi" target="_blank" rel="noopener noreferrer">Add to Chrome</a>
           <p class="beta-note">Free beta: 5 AI requests every 24 hours. Verify your email to finish creating an account.</p>
         </aside>
       </div>
@@ -218,17 +222,17 @@
         <div>
           <p class="section-kicker">Separate developer preview</p>
           <h2 class="section-heading">Office add-in package.</h2>
-          <p class="section-intro">A separate Office add-in manifest is available for sideloading into desktop Office. It is not published in Microsoft AppSource and has not been fully tested by the maintainer.</p>
+          <p class="section-intro">The Office add-in is currently a manual developer preview, not an AppSource release. For everyday users, the easiest Office install will be an AppSource listing; that requires the add-in's sign-in and request flow to be verified first.</p>
           <ol class="install-steps">
-            <li><div><strong>Download and extract</strong><span>Unzip the Office preview package to find its manifest file and setup notes.</span></div></li>
-            <li><div><strong>Upload the manifest in Office</strong><span>In a supported desktop Office app, open the add-ins menu and choose the option to upload a custom add-in manifest.</span></div></li>
+            <li><div><strong>Download and extract</strong><span>For preview testing, unzip the package and use the manifest for your Office app.</span></div></li>
+            <li><div><strong>Add the manifest</strong><span>In desktop Word, Excel, or PowerPoint, use the Add-ins menu to upload a custom manifest. Outlook has a separate manifest and setup path.</span></div></li>
             <li><div><strong>Sign in through Exelidoc</strong><span>Use the same account session as the browser extension. Office functionality may differ and is not guaranteed.</span></div></li>
           </ol>
         </div>
         <aside class="download-box">
           <h3>Office add-in · untested</h3>
           <p>This preview is separate from the Chrome extension. Use it only for testing; it is not a one-click Office Store install.</p>
-          <a class="button" href="exelidoc-office-addin-preview.zip" download>Download Office preview ZIP</a>
+          <a class="button" href="exelidoc-office-addin-preview.zip" download>Download Office test preview</a>
           <p class="beta-note">Outlook is not included. Word, Excel, and PowerPoint may not work as expected; they have not been verified for public use.</p>
         </aside>
       </div>
@@ -262,6 +266,7 @@
   </main>
 
   <footer class="site-footer">
+    <div class="footer-brand"><img src="assets/brand-icon-128.png" alt="" />Exelidoc</div>
     <div class="footer-links"><a href="#features">What it does</a><a href="#install">Chrome install</a><a href="#office-preview">Office preview</a><a href="#plans">Plans</a><a href="privacy.html">Privacy</a></div>
     <p class="copyright">&copy; 2026 Exelidoc</p>
     <p class="site-status">Exelidoc may respond slowly because it relies on free-tier services and is still in development. Availability and response times can vary.</p>

@@ -55,8 +55,14 @@ function ensureDocsLauncher() {
   button.className = "exelidoc-docs-launcher";
   button.textContent = "Exelidoc";
   button.setAttribute("aria-label", "Open Exelidoc panel");
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", "exelidoc-docs-panel");
   button.addEventListener("click", () => {
-    openDocsPanel();
+    if (activePanel && window.getComputedStyle(activePanel).display !== "none") {
+      setDocsPanelOpen(false);
+    } else {
+      openDocsPanel();
+    }
   });
 
   document.body.appendChild(button);
@@ -65,9 +71,17 @@ function ensureDocsLauncher() {
 
 function openDocsPanel() {
   const editor = getDocsEditor();
+  if (!editor) return;
   if (editor && editor !== activeBox) setActiveBox(editor);
   if (!activePanel) activePanel = createExelidocPanel();
-  activePanel.style.display = "flex";
+  setDocsPanelOpen(true);
+}
+
+function setDocsPanelOpen(isOpen) {
+  if (!activePanel) return;
+  activePanel.style.display = isOpen ? "flex" : "none";
+  docsLauncher?.setAttribute("aria-expanded", String(isOpen));
+  docsLauncher?.setAttribute("aria-label", isOpen ? "Close Exelidoc panel" : "Open Exelidoc panel");
 }
 
 function setActiveBox(box) {
@@ -76,33 +90,33 @@ function setActiveBox(box) {
 
   if (!box) {
     preEditSnapshot = null;
-    if (activePanel) activePanel.style.display = "none";
+    setDocsPanelOpen(false);
     return;
   }
 
-  if (!sameBox) {
-    preEditSnapshot = null;
-  }
+  if (sameBox) return;
+  preEditSnapshot = null;
 
   if (!activePanel) activePanel = createExelidocPanel();
   resetPanelState(activePanel);
-  activePanel.style.display = "flex";
   positionPanel(activePanel, box);
 }
 
 function positionPanel(panel, box) {
   if (!panel) return;
   panel.classList.add("docs-mode");
-  panel.style.top = "72px";
-  panel.style.right = "22px";
-  panel.style.left = "auto";
+  panel.style.top = "auto";
+  panel.style.right = "auto";
+  panel.style.left = "22px";
+  panel.style.bottom = "72px";
 }
 
 function createExelidocPanel() {
   const panel = document.createElement("div");
   panel.className = "exelidoc-panel docs-mode";
+  panel.id = "exelidoc-docs-panel";
   panel.innerHTML = `
-    <div class="exelidoc-panel-header">Exelidoc</div>
+    <div class="exelidoc-panel-header"><span>Exelidoc</span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
     <textarea class="exelidoc-query" placeholder="e.g. write a section, rewrite this, make it more concise"></textarea>
     <button class="exelidoc-submit">Ask</button>
     <button class="exelidoc-undo" hidden>Undo</button>
@@ -122,6 +136,7 @@ function createExelidocPanel() {
   const undoEl = panel.querySelector(".exelidoc-undo");
   const statusEl = panel.querySelector(".exelidoc-status");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
+  panel.querySelector(".exelidoc-close").addEventListener("click", () => setDocsPanelOpen(false));
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
     : { selectedIds: () => [], refresh: () => {} };
@@ -132,11 +147,16 @@ function createExelidocPanel() {
   let dragState = null;
   panelHeader.addEventListener("pointerdown", (event) => {
     if (event.target.closest("button, textarea")) return;
+    const rect = panel.getBoundingClientRect();
+    panel.style.top = `${rect.top}px`;
+    panel.style.left = `${rect.left}px`;
+    panel.style.bottom = "auto";
+    panel.style.right = "auto";
     dragState = {
       startX: event.clientX,
       startY: event.clientY,
-      left: parseFloat(panel.style.left || "0") || 0,
-      top: parseFloat(panel.style.top || "0") || 0,
+      left: rect.left,
+      top: rect.top,
     };
     panel.dataset.userMoved = "true";
     panel.setPointerCapture?.(event.pointerId);
@@ -226,11 +246,11 @@ function resetPanelState(panel) {
 }
 
 function initDocsPanel() {
-  ensureDocsLauncher();
   const editor = getDocsEditor();
-  if (!editor || editor === boundEditor) return;
+  if (!editor) return;
+  ensureDocsLauncher();
+  if (editor === boundEditor) return;
   boundEditor = editor;
-  editor.addEventListener("focus", () => setActiveBox(editor));
   setActiveBox(editor);
 }
 
@@ -241,7 +261,8 @@ docsObserver.observe(document.body, { childList: true, subtree: true });
 
 document.addEventListener("click", (event) => {
   if (event.target instanceof Element && event.target.closest(".kix-appview-editor")) {
-    openDocsPanel();
+    const editor = getDocsEditor();
+    if (editor && editor !== activeBox) setActiveBox(editor);
   }
 });
 

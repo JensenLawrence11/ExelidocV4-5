@@ -23,9 +23,10 @@
 
 .exelidoc-panel.docs-mode {
   position: fixed;
-  top: 72px;
-  right: 22px;
-  left: auto;
+  top: auto;
+  right: auto;
+  bottom: 72px;
+  left: 22px;
   width: 310px;
   max-width: calc(100vw - 28px);
   max-height: calc(100vh - 92px);
@@ -34,8 +35,8 @@
 
 .exelidoc-docs-launcher {
   position: fixed;
-  top: 18px;
-  right: 22px;
+  bottom: 18px;
+  left: 22px;
   z-index: 10001;
   padding: 8px 14px;
   border: 0;
@@ -52,9 +53,30 @@
 }
 
 .exelidoc-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-weight: 600;
   font-size: 14px;
   color: #202124;
+}
+
+.exelidoc-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #5f6368;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.exelidoc-close:hover {
+  background: #f1f3f4;
 }
 
 .exelidoc-query {
