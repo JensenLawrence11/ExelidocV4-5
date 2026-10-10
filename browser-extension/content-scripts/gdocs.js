@@ -5,21 +5,7 @@ let docsLauncher = null;
 let boundEditor = null;
 
 function getDocsEditor() {
-  const editor = document.querySelector('.kix-appview-editor[contenteditable="true"], [role="textbox"][contenteditable="true"]');
-  if (editor) return editor;
-
-  for (const frame of document.querySelectorAll("iframe.docs-texteventtarget-iframe")) {
-    try {
-      const frameEditor = frame.contentDocument?.body;
-      if (frameEditor?.isContentEditable || frameEditor?.getAttribute("contenteditable") === "true") {
-        return frameEditor;
-      }
-    } catch (error) {
-      console.debug("Exelidoc Docs: editor iframe is not accessible", error);
-    }
-  }
-
-  return null;
+  return document.querySelector('.kix-appview-editor[contenteditable="true"], [role="textbox"][contenteditable="true"]');
 }
 
 function captureComposeSnapshot(box) {
@@ -35,15 +21,13 @@ function setComposeText(box, value) {
   if (!box) return;
 
   box.focus();
-  const editorDocument = box.ownerDocument || document;
-  const selection = editorDocument.getSelection();
-  if (selection) {
-    const range = editorDocument.createRange();
-    range.selectNodeContents(box);
-    selection.removeAllRanges();
-    selection.addRange(range);
+  box.innerHTML = "";
+  box.textContent = value || "";
+
+  if (typeof InputEvent !== "undefined") {
+    box.dispatchEvent(new InputEvent("input", { bubbles: true, data: value || "" }));
   }
-  return editorDocument.execCommand("insertText", false, value || "");
+  box.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function restoreComposeSnapshot(box, snapshot) {
@@ -51,7 +35,16 @@ function restoreComposeSnapshot(box, snapshot) {
 
   box.focus();
 
-  setComposeText(box, snapshot.text || "");
+  if (snapshot.html !== undefined && snapshot.html !== null) {
+    box.innerHTML = snapshot.html;
+  } else {
+    box.textContent = snapshot.text || "";
+  }
+
+  if (typeof InputEvent !== "undefined") {
+    box.dispatchEvent(new InputEvent("input", { bubbles: true, data: snapshot.text || "" }));
+  }
+  box.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function ensureDocsLauncher() {
@@ -105,11 +98,13 @@ function setActiveBox(box) {
     return;
   }
 
-  if (sameBox) return;
-  preEditSnapshot = null;
+  if (!sameBox) {
+    preEditSnapshot = null;
+  }
 
   if (!activePanel) activePanel = createExelidocPanel();
   resetPanelState(activePanel);
+  setDocsPanelOpen(true);
   positionPanel(activePanel, box);
 }
 
@@ -247,11 +242,7 @@ function createExelidocPanel() {
         }
 
         preEditSnapshot = captureComposeSnapshot(activeBox);
-        if (!setComposeText(activeBox, corrected)) {
-          preEditSnapshot = null;
-          statusEl.textContent = "Google Docs did not accept the edit. Try clicking in the document and asking again.";
-          return;
-        }
+        setComposeText(activeBox, corrected);
         undoEl.hidden = false;
         statusEl.textContent = "Updated document.";
       }
@@ -284,6 +275,7 @@ function initDocsPanel() {
   if (!editor) return;
   if (editor === boundEditor) return;
   boundEditor = editor;
+  editor.addEventListener("focus", () => setActiveBox(editor));
   setActiveBox(editor);
 }
 
@@ -294,8 +286,7 @@ docsObserver.observe(document.body, { childList: true, subtree: true });
 
 document.addEventListener("click", (event) => {
   if (event.target instanceof Element && event.target.closest(".kix-appview-editor")) {
-    const editor = getDocsEditor();
-    if (editor && editor !== activeBox) setActiveBox(editor);
+    openDocsPanel();
   }
 });
 
