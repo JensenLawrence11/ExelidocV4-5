@@ -56,7 +56,10 @@ def create_checkout_session_route():
             error=(
                 "Stripe could not find the configured price. Check that the STRIPE_PRICE_ID for this plan "
                 "is an active recurring Price ID from the same Stripe account and test/live mode as STRIPE_SECRET_KEY."
-            )
+            ),
+            stripe_code=getattr(error, "code", None),
+            stripe_param=getattr(error, "param", None),
+            stripe_request_id=getattr(error, "request_id", None),
         ), 503
     except stripe.error.AuthenticationError as error:
         current_app.logger.error(

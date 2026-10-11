@@ -297,12 +297,15 @@
           });
           const data = await response.json().catch(() => ({}));
           if (!response.ok || !data.url) {
+            const stripeDetails = data.stripe_request_id
+              ? ` Stripe request: ${data.stripe_request_id}${data.stripe_code ? ` (${data.stripe_code})` : ""}${data.stripe_param ? `, parameter: ${data.stripe_param}` : ""}.`
+              : "";
             if (response.status === 409 && data.error?.includes("Create your free account")) {
               billingError.textContent = "No Exelidoc account was found for that email. Create the free account in the extension first, then try again with that same email.";
             } else if (response.status === 409 && data.error?.includes("active paid plan")) {
               billingError.textContent = "This account already has an active paid plan. Plan changes are not supported yet.";
             } else {
-              billingError.textContent = data.error || "Checkout could not start. Try again shortly.";
+              billingError.textContent = `${data.error || "Checkout could not start. Try again shortly."}${stripeDetails}`;
             }
             return;
           }
