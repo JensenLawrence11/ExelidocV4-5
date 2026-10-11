@@ -44,18 +44,37 @@ def create_checkout_session_route():
 
     try:
         session = create_checkout_session(customer_email=email, tier=tier)
-    except stripe.error.InvalidRequestError:
+    except stripe.error.InvalidRequestError as error:
+        current_app.logger.warning(
+            "Stripe checkout invalid request: code=%s param=%s request_id=%s message=%s",
+            getattr(error, "code", None),
+            getattr(error, "param", None),
+            getattr(error, "request_id", None),
+            str(error),
+        )
         return jsonify(
             error=(
                 "Stripe could not find the configured price. Check that the STRIPE_PRICE_ID for this plan "
                 "is an active recurring Price ID from the same Stripe account and test/live mode as STRIPE_SECRET_KEY."
             )
         ), 503
-    except stripe.error.AuthenticationError:
+    except stripe.error.AuthenticationError as error:
+        current_app.logger.error(
+            "Stripe checkout authentication failed: request_id=%s message=%s",
+            getattr(error, "request_id", None),
+            str(error),
+        )
         return jsonify(
             error="Stripe authentication failed. Set a valid STRIPE_SECRET_KEY for the same Stripe account as the plan prices."
         ), 503
-    except stripe.error.StripeError:
+    except stripe.error.StripeError as error:
+        current_app.logger.error(
+            "Stripe checkout failed: type=%s code=%s request_id=%s message=%s",
+            type(error).__name__,
+            getattr(error, "code", None),
+            getattr(error, "request_id", None),
+            str(error),
+        )
         return jsonify(
             error="Stripe could not create checkout. Check the secret key, recurring Price IDs, and Stripe account permissions."
         ), 503
