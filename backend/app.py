@@ -5,6 +5,7 @@ or in production behind gunicorn:
     gunicorn app:app
 """
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -25,27 +26,28 @@ def _is_allowed_origin(origin: str | None) -> bool:
     if not origin:
         return False
 
-    if origin.startswith("chrome-extension://"):
-        return True
-
     for allowed in _configured_frontend_origins():
         if allowed == "*":
             return True
         if allowed.endswith("/*"):
-            allowed = allowed[:-1]
-        if origin == allowed or origin.startswith(allowed.rstrip("/")):
+            base = allowed[:-2].rstrip("/")
+            if origin == base or origin.startswith(base + "/"):
+                return True
+        elif origin == allowed:
             return True
 
-    local_hosts = (
-        "http://localhost",
-        "https://localhost",
-        "http://127.0.0.1",
-        "https://127.0.0.1",
+    parsed = urlparse(origin)
+    return (
+        parsed.scheme in {"http", "https"}
+        and parsed.hostname in {"localhost", "127.0.0.1"}
+        and not parsed.path
     )
-    return origin.startswith(local_hosts)
 
 
 def create_app():
+    if Config.ENV == "production":
+        Config.validate_for_production()
+
     app = Flask(__name__)
     app.config.from_object(Config)
 
@@ -60,9 +62,8 @@ def create_app():
     def serve_office_addin_assets(filename):
         return send_from_directory(office_addin_root / "assets", filename)
 
-    # Chrome extension IDs are install-specific and therefore not stable across
-    # machines. Allow any extension origin plus the configured web origins and
-    # localhost addresses that the app uses during local development.
+    # Configure the installed extension ID explicitly; only local web origins
+    # receive the development localhost exception.
     CORS(app, origins=_configured_frontend_origins(), supports_credentials=True)
 
     @app.after_request

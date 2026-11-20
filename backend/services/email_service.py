@@ -1,12 +1,13 @@
 """Transactional email delivery for account verification and welcome messages."""
 from email.message import EmailMessage
+from html import escape
 from smtplib import SMTP, SMTP_SSL
 from urllib.parse import urlencode
 
 from config import Config
 
 
-def _send_email(recipient: str, subject: str, body: str) -> None:
+def _send_email(recipient: str, subject: str, body: str, html_body: str | None = None) -> None:
     if not Config.EMAIL_SMTP_HOST or not Config.EMAIL_FROM_ADDRESS:
         raise RuntimeError("Email delivery is not configured")
 
@@ -15,6 +16,8 @@ def _send_email(recipient: str, subject: str, body: str) -> None:
     message["From"] = f"{Config.EMAIL_FROM_NAME} <{Config.EMAIL_FROM_ADDRESS}>"
     message["To"] = recipient
     message.set_content(body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
 
     smtp_class = SMTP_SSL if Config.EMAIL_SMTP_PORT == 465 else SMTP
     with smtp_class(Config.EMAIL_SMTP_HOST, Config.EMAIL_SMTP_PORT, timeout=15) as server:
@@ -44,4 +47,22 @@ def send_welcome_email(recipient: str) -> None:
         "Welcome to Exelidoc",
         "Your email address is verified and your Exelidoc account is ready. "
         "You can now sign in from the Exelidoc extension or add-in.",
+    )
+
+
+def send_password_reset_email(recipient: str, token: str) -> None:
+    link = (
+        f"{Config.APP_PUBLIC_URL.rstrip('/')}/api/auth/reset-password?"
+        f"{urlencode({'token': token})}"
+    )
+    _send_email(
+        recipient,
+        "Reset your Exelidoc password",
+        "Use this link to reset your Exelidoc password:\n\n"
+        f"{link}\n\nThis link expires in 30 minutes. If you did not request this, ignore this email.",
+        (
+            "<p>Use this link to reset your Exelidoc password:</p>"
+            f'<p><a href="{escape(link, quote=True)}">Reset password</a></p>'
+            "<p>This link expires in 30 minutes. If you did not request this, ignore this email.</p>"
+        ),
     )

@@ -41,6 +41,8 @@ requires a separate deployment and Google authorization review.
   Properties; it does not provide a per-user sign-in flow. Do not deploy it
   for general use without addressing that limitation.
 
-The current Exelidoc signup flow does not verify email ownership and does not
-support signing into an existing account from a fresh extension install. Add
-verified account authentication before opening signup to the public.
+The browser extension signup flow verifies email ownership, supports password
+recovery, and provides subscription management and account deletion. These
+account controls are not wired into this separate Apps Script prototype. Do not
+deploy the Apps Script prototype for general use without adding its own per-user
+sign-in and account-management flow.

@@ -36,6 +36,49 @@ def set_user_password(user_id: str, password: str) -> None:
     }).eq("id", user_id).execute()
 
 
+def issue_password_reset(user_id: str, token_hash: str, expires_at: str) -> bool:
+    result = get_supabase().rpc(
+        "issue_password_reset",
+        {
+            "p_user_id": user_id,
+            "p_token_hash": token_hash,
+            "p_expires_at": expires_at,
+        },
+    ).execute()
+    return bool(result.data)
+
+
+def get_password_reset_by_hash(token_hash: str) -> dict | None:
+    result = (
+        get_supabase()
+        .table("password_resets")
+        .select("user_id,expires_at")
+        .eq("token_hash", token_hash)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def delete_password_reset(token_hash: str) -> None:
+    get_supabase().table("password_resets").delete().eq("token_hash", token_hash).execute()
+
+
+def complete_password_reset(token_hash: str, password: str) -> bool:
+    result = get_supabase().rpc(
+        "complete_password_reset",
+        {
+            "p_token_hash": token_hash,
+            "p_password_hash": hash_password(password),
+            "p_session_token": generate_session_token(),
+        },
+    ).execute()
+    return bool(result.data)
+
+
+def delete_user(user_id: str) -> None:
+    get_supabase().table("users").delete().eq("id", user_id).execute()
+
+
 def create_user(
     email: str,
     tier: str = "free",

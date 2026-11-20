@@ -3,47 +3,78 @@ Subscription billing. The website's "Subscribe" button hits /create-checkout-ses
 with a tier, Stripe redirects the user through checkout, then calls our
 /webhook to confirm payment and provision/update the user's row in Supabase.
 """
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, g
 import stripe
 
-from services.stripe_service import create_checkout_session, handle_webhook_event
+from services.stripe_service import (
+    create_checkout_session,
+    create_customer_portal_session,
+    handle_webhook_event,
+)
 from services.user_service import (
     get_user_by_email,
     create_user,
     link_stripe_customer,
     set_subscription_status,
     set_user_tier,
+    get_user_by_stripe_customer,
 )
+from utils.auth_decorator import require_session
 
 stripe_bp = Blueprint("stripe", __name__)
 
 PAID_TIERS = {"pro", "enterprise"}
 
 
+@stripe_bp.post("/customer-portal")
+@require_session
+def customer_portal_route():
+    customer_id = g.user.get("stripe_customer_id")
+    if not customer_id:
+        return jsonify(error="There is no Stripe billing account linked to this Exelidoc account."), 409
+
+    try:
+        session = create_customer_portal_session(customer_id)
+    except stripe.error.StripeError as error:
+        current_app.logger.error(
+            "Stripe customer portal failed: type=%s request_id=%s message=%s",
+            type(error).__name__,
+            getattr(error, "request_id", None),
+            str(error),
+        )
+        return jsonify(
+            error="Could not open billing management. Try again shortly or contact Exelidoc support.",
+        ), 503
+    except ValueError as error:
+        return jsonify(error=str(error)), 503
+
+    return jsonify(url=session.url)
+
+
 @stripe_bp.post("/create-checkout-session")
+@require_session
 def create_checkout_session_route():
     """
-    Body: { "customer_email": "...", "tier": "pro" | "enterprise" }
+    Body: { "tier": "pro" | "enterprise" }
+    Requires the signed-in account session; the account email is never accepted
+    from the request body.
     Returns: { "url": "https://checkout.stripe.com/..." }
     """
     data = request.get_json(silent=True) or {}
-    email = data.get("customer_email")
     tier = data.get("tier")
-
-    if not isinstance(email, str) or not email.strip():
-        return jsonify(error="customer_email is required"), 400
-    email = email.strip().lower()
     if tier not in PAID_TIERS:
         return jsonify(error=f"tier must be one of {sorted(PAID_TIERS)}"), 400
 
-    user = get_user_by_email(email)
-    if not user:
-        return jsonify(error="Create your free account in the extension before upgrading."), 409
-    if user.get("tier") in PAID_TIERS and user.get("subscription_status") in ("active", "trialing"):
-        return jsonify(error="An active paid plan already exists for this account. Plan changes are not available here yet."), 409
+    user = g.user
+    if user.get("tier") in PAID_TIERS and user.get("subscription_status") in ("active", "trialing", "past_due"):
+        return jsonify(error="An active paid plan already exists. Use Manage subscription to update it."), 409
 
     try:
-        session = create_checkout_session(customer_email=email, tier=tier)
+        session = create_checkout_session(
+            customer_email=user["email"],
+            tier=tier,
+            customer_id=user.get("stripe_customer_id"),
+        )
     except stripe.error.InvalidRequestError as error:
         current_app.logger.warning(
             "Stripe checkout invalid request: code=%s param=%s request_id=%s message=%s",
@@ -115,8 +146,11 @@ def webhook_route():
         email = obj.get("customer_email") or obj.get("customer_details", {}).get("email")
         customer_id = obj.get("customer")
         tier = (obj.get("metadata") or {}).get("tier", "pro")
+        user = get_user_by_stripe_customer(customer_id) if customer_id else None
+        email = email or (user or {}).get("email")
         if email and customer_id:
-            if not get_user_by_email(email):
+            user = user or get_user_by_email(email)
+            if not user:
                 create_user(email, tier="free")
             link_stripe_customer(email, customer_id)
             set_subscription_status(customer_id, "active", obj.get("subscription"))

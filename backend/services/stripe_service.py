@@ -25,7 +25,7 @@ def _cancel_url() -> str:
     return f"{_public_base_url()}/download.html"
 
 
-def create_checkout_session(customer_email: str, tier: str):
+def create_checkout_session(customer_email: str, tier: str, customer_id: str | None = None):
     """Free tier never calls this -- only 'pro' and 'enterprise' go through Stripe."""
     if not Config.STRIPE_SECRET_KEY:
         raise ValueError("Stripe checkout is not configured: set STRIPE_SECRET_KEY in the backend environment.")
@@ -40,20 +40,33 @@ def create_checkout_session(customer_email: str, tier: str):
             f"Check {('STRIPE_PRICE_ID_PRO' if tier == 'pro' else 'STRIPE_PRICE_ID_ENTERPRISE')}."
         )
 
-    return stripe.checkout.Session.create(
-        mode="subscription",
-        payment_method_types=["card"],
-        line_items=[{"price": price_id, "quantity": 1}],
-        customer_email=customer_email,
-        metadata={"tier": tier},
-        subscription_data={"metadata": {"tier": tier}},
-        success_url=_success_url(),
-        cancel_url=_cancel_url(),
-    )
+    session_options = {
+        "mode": "subscription",
+        "payment_method_types": ["card"],
+        "line_items": [{"price": price_id, "quantity": 1}],
+        "metadata": {"tier": tier},
+        "subscription_data": {"metadata": {"tier": tier}},
+        "success_url": _success_url(),
+        "cancel_url": _cancel_url(),
+    }
+    if customer_id:
+        session_options["customer"] = customer_id
+    else:
+        session_options["customer_email"] = customer_email
+    return stripe.checkout.Session.create(**session_options)
 
 
 def get_checkout_session(session_id: str):
     return stripe.checkout.Session.retrieve(session_id)
+
+
+def create_customer_portal_session(customer_id: str):
+    if not Config.STRIPE_SECRET_KEY:
+        raise ValueError("Stripe billing is not configured.")
+    return stripe.billing_portal.Session.create(
+        customer=customer_id,
+        return_url=Config.BILLING_RETURN_URL or _public_base_url(),
+    )
 
 
 def handle_webhook_event(payload: bytes, sig_header: str, webhook_secret: str) -> dict:

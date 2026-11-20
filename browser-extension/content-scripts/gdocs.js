@@ -48,8 +48,16 @@ function createExelidocPanel() {
   panel.innerHTML = `
     <div class="exelidoc-panel-header"><span>Exelidoc</span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
     <textarea class="exelidoc-query" placeholder="e.g. write a section, rewrite this, make it more concise"></textarea>
-    <div class="exelidoc-docs-note">Rewrites the full plain-text document. Formatting resets; tables and embedded objects are unsupported.</div>
-    <button class="exelidoc-submit">Ask</button>
+    <div class="exelidoc-docs-note">Reads the full plain-text document. Review the proposed replacement before applying it. Formatting resets; tables and embedded objects are unsupported.</div>
+    <button class="exelidoc-submit">Generate preview</button>
+    <section class="exelidoc-docs-preview" hidden>
+      <label for="exelidoc-docs-preview-text">Proposed full-document replacement</label>
+      <textarea class="exelidoc-docs-preview-text" readonly></textarea>
+      <div class="exelidoc-docs-preview-actions">
+        <button class="exelidoc-docs-apply" type="button">Apply to document</button>
+        <button class="exelidoc-docs-discard" type="button">Discard</button>
+      </div>
+    </section>
     <button class="exelidoc-undo" hidden>Undo</button>
     <div class="exelidoc-status"></div>
     <details class="exelidoc-history">
@@ -64,10 +72,16 @@ function createExelidocPanel() {
 
   const queryEl = panel.querySelector(".exelidoc-query");
   const submitEl = panel.querySelector(".exelidoc-submit");
+  const previewEl = panel.querySelector(".exelidoc-docs-preview");
+  const previewTextEl = panel.querySelector(".exelidoc-docs-preview-text");
+  const applyEl = panel.querySelector(".exelidoc-docs-apply");
+  const discardEl = panel.querySelector(".exelidoc-docs-discard");
   const undoEl = panel.querySelector(".exelidoc-undo");
   const statusEl = panel.querySelector(".exelidoc-status");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
+  let pendingPreview = null;
   let previousText = null;
+  let undoRevisionId = null;
   panel.querySelector(".exelidoc-close").addEventListener("click", () => setDocsPanelOpen(false));
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
@@ -125,6 +139,8 @@ function createExelidocPanel() {
 
     statusEl.textContent = "Thinking...";
     submitEl.disabled = true;
+    previewEl.hidden = true;
+    pendingPreview = null;
     console.info("Exelidoc Docs: sending Docs API request", { documentId });
 
     chrome.runtime.sendMessage(
@@ -153,20 +169,65 @@ function createExelidocPanel() {
           statusEl.textContent = "The document was unchanged.";
           return;
         }
-        previousText = response.previousText;
-        undoEl.hidden = false;
-        statusEl.textContent = "Done. The document was updated.";
+        pendingPreview = {
+          text: response.correctedText,
+          revisionId: response.revisionId,
+        };
+        previewTextEl.value = response.correctedText;
+        previewEl.hidden = false;
+        statusEl.textContent = "Review the proposed replacement. Your document has not been changed.";
       }
     );
   });
 
+  applyEl.addEventListener("click", () => {
+    const documentId = getCurrentDocumentId();
+    if (!documentId || !pendingPreview) {
+      statusEl.textContent = "Generate a new preview before applying an edit.";
+      return;
+    }
+
+    applyEl.disabled = true;
+    discardEl.disabled = true;
+    statusEl.textContent = "Applying the reviewed replacement...";
+    chrome.runtime.sendMessage(
+      {
+        type: "APPLY_GOOGLE_DOC_EDIT",
+        documentId,
+        text: pendingPreview.text,
+        revisionId: pendingPreview.revisionId,
+      },
+      (response) => {
+        applyEl.disabled = false;
+        discardEl.disabled = false;
+        if (chrome.runtime.lastError || !response?.ok) {
+          statusEl.textContent = `Could not apply the replacement: ${response?.error || chrome.runtime.lastError?.message || "no response"}`;
+          return;
+        }
+        previousText = response.previousText;
+        undoRevisionId = response.revisionId;
+        pendingPreview = null;
+        previewEl.hidden = true;
+        undoEl.hidden = false;
+        statusEl.textContent = "Done. The reviewed replacement was applied.";
+      }
+    );
+  });
+
+  discardEl.addEventListener("click", () => {
+    pendingPreview = null;
+    previewTextEl.value = "";
+    previewEl.hidden = true;
+    statusEl.textContent = "Preview discarded. Your document was not changed.";
+  });
+
   undoEl.addEventListener("click", () => {
     const documentId = getCurrentDocumentId();
-    if (!documentId || previousText === null) return;
+    if (!documentId || previousText === null || !undoRevisionId) return;
     undoEl.disabled = true;
     statusEl.textContent = "Restoring the previous document...";
     chrome.runtime.sendMessage(
-      { type: "RESTORE_GOOGLE_DOC", documentId, text: previousText },
+      { type: "RESTORE_GOOGLE_DOC", documentId, text: previousText, revisionId: undoRevisionId },
       (response) => {
         undoEl.disabled = false;
         if (chrome.runtime.lastError || !response?.ok) {
@@ -174,6 +235,7 @@ function createExelidocPanel() {
           return;
         }
         previousText = null;
+        undoRevisionId = null;
         undoEl.hidden = true;
         statusEl.textContent = "Restored the previous document text.";
       }
@@ -188,6 +250,7 @@ function resetPanelState(panel) {
   panel.querySelector(".exelidoc-query").value = "";
   panel.querySelector(".exelidoc-status").textContent = "";
   panel.querySelector(".exelidoc-undo").hidden = true;
+  panel.querySelector(".exelidoc-docs-preview").hidden = true;
   panel.dataset.userMoved = "false";
 }
 

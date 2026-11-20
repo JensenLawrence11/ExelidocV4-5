@@ -30,7 +30,8 @@
   width: 310px;
   max-width: calc(100vw - 28px);
   max-height: calc(100vh - 92px);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .exelidoc-docs-launcher {
@@ -98,6 +99,64 @@
 .exelidoc-docs-note {
   color: #5f6368;
   font-size: 11px;
+}
+
+.exelidoc-docs-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  background: #f8f9fa;
+}
+
+.exelidoc-docs-preview[hidden] {
+  display: none;
+}
+
+.exelidoc-docs-preview label {
+  font-weight: 600;
+}
+
+.exelidoc-docs-preview-text {
+  width: 100%;
+  min-height: 120px;
+  max-height: 240px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+.exelidoc-docs-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exelidoc-docs-apply,
+.exelidoc-docs-discard {
+  padding: 6px 10px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.exelidoc-docs-apply {
+  border-color: #1a73e8;
+  background: #1a73e8;
+  color: #fff;
+}
+
+.exelidoc-docs-apply:disabled,
+.exelidoc-docs-discard:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .exelidoc-submit {

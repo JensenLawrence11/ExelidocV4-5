@@ -7,6 +7,13 @@ import services.stripe_service as stripe_service
 from app import create_app
 
 
+FREE_USER = {"id": "user-1", "email": "user@example.com", "tier": "free"}
+
+
+def _authenticated(user):
+    return patch("utils.auth_decorator.get_user_by_session_token", return_value=user)
+
+
 def test_stripe_uses_public_url_and_monthly_alias(monkeypatch):
     monkeypatch.setenv("APP_PUBLIC_URL", "https://example.com")
     monkeypatch.setenv("STRIPE_PRICE_ID_PRO", "")
@@ -23,38 +30,70 @@ def test_stripe_uses_public_url_and_monthly_alias(monkeypatch):
     assert stripe_service._cancel_url() == "https://example.com/download.html"
 
 
-def test_paid_checkout_requires_extension_account():
+def test_customer_portal_returns_customer_to_configured_website():
+    portal_session = type("PortalSession", (), {"url": "https://billing.stripe.com/session"})()
+
+    with patch.object(stripe_service.Config, "BILLING_RETURN_URL", "https://example.com/index.html#plans"), patch(
+        "services.stripe_service.stripe.billing_portal.Session.create",
+        return_value=portal_session,
+    ) as create_session:
+        result = stripe_service.create_customer_portal_session("cus-123")
+
+    assert result is portal_session
+    create_session.assert_called_once_with(
+        customer="cus-123",
+        return_url="https://example.com/index.html#plans",
+    )
+
+
+def test_checkout_reuses_authenticated_users_existing_stripe_customer():
+    with patch.object(stripe_service.Config, "STRIPE_SECRET_KEY", "sk_test"), patch.dict(
+        stripe_service.TIER_PRICE_IDS, {"pro": "price_pro"}
+    ), patch(
+        "services.stripe_service.stripe.checkout.Session.create",
+        return_value=type("CheckoutSession", (), {"url": "https://checkout.example/session"})(),
+    ) as create_session:
+        stripe_service.create_checkout_session(
+            customer_email="user@example.com",
+            tier="pro",
+            customer_id="cus-existing",
+        )
+
+    assert create_session.call_args.kwargs["customer"] == "cus-existing"
+    assert "customer_email" not in create_session.call_args.kwargs
+
+
+def test_paid_checkout_requires_authenticated_session():
     app = create_app()
 
     with app.test_client() as client:
-        with patch("routes.stripe_routes.get_user_by_email", return_value=None), patch(
-            "routes.stripe_routes.create_checkout_session"
-        ) as create_checkout:
+        with patch("routes.stripe_routes.create_checkout_session") as create_checkout:
             response = client.post(
                 "/api/stripe/create-checkout-session",
-                json={"customer_email": "new@example.com", "tier": "pro"},
+                json={"customer_email": "known@example.com", "tier": "pro"},
             )
 
-    assert response.status_code == 409
-    assert "extension" in response.get_json()["error"]
+    assert response.status_code == 401
     create_checkout.assert_not_called()
 
 
 def test_paid_checkout_does_not_create_duplicate_active_subscription():
     app = create_app()
     paid_user = {
+        "id": "paid-user",
         "email": "paid@example.com",
         "tier": "pro",
         "subscription_status": "active",
     }
 
-    with app.test_client() as client:
-        with patch("routes.stripe_routes.get_user_by_email", return_value=paid_user), patch(
+    with app.test_client() as client, _authenticated(paid_user):
+        with patch(
             "routes.stripe_routes.create_checkout_session"
         ) as create_checkout:
             response = client.post(
                 "/api/stripe/create-checkout-session",
-                json={"customer_email": "paid@example.com", "tier": "pro"},
+                json={"tier": "pro"},
+                headers={"X-Session-Token": "session-1"},
             )
 
     assert response.status_code == 409
@@ -62,24 +101,28 @@ def test_paid_checkout_does_not_create_duplicate_active_subscription():
     create_checkout.assert_not_called()
 
 
-def test_paid_checkout_normalizes_account_email():
+def test_checkout_uses_authenticated_account_not_request_email():
     app = create_app()
-    free_user = {"email": "user@example.com", "tier": "free"}
+    free_user = {**FREE_USER, "stripe_customer_id": "cus-existing"}
 
-    with app.test_client() as client:
-        with patch("routes.stripe_routes.get_user_by_email", return_value=free_user) as find_user, patch(
+    with app.test_client() as client, _authenticated(free_user):
+        with patch(
             "routes.stripe_routes.create_checkout_session",
             return_value=type("CheckoutSession", (), {"url": "https://checkout.example/session"})(),
         ) as create_checkout:
             response = client.post(
                 "/api/stripe/create-checkout-session",
-                json={"customer_email": "  USER@Example.com  ", "tier": "pro"},
+                json={"customer_email": "attacker@example.com", "tier": "pro"},
+                headers={"X-Session-Token": "session-1"},
             )
 
     assert response.status_code == 200
     assert response.get_json()["url"] == "https://checkout.example/session"
-    find_user.assert_called_once_with("user@example.com")
-    create_checkout.assert_called_once_with(customer_email="user@example.com", tier="pro")
+    create_checkout.assert_called_once_with(
+        customer_email="user@example.com",
+        tier="pro",
+        customer_id="cus-existing",
+    )
 
 
 def test_checkout_rejects_product_id_before_calling_stripe():
@@ -98,16 +141,15 @@ def test_checkout_rejects_product_id_before_calling_stripe():
 
 def test_checkout_reports_bad_price_configuration_to_website():
     app = create_app()
-    free_user = {"email": "user@example.com", "tier": "free"}
-
-    with app.test_client() as client:
-        with patch("routes.stripe_routes.get_user_by_email", return_value=free_user), patch(
+    with app.test_client() as client, _authenticated(FREE_USER):
+        with patch(
             "routes.stripe_routes.create_checkout_session",
             side_effect=ValueError("Stripe pro must use a recurring Price ID beginning with 'price_'."),
         ):
             response = client.post(
                 "/api/stripe/create-checkout-session",
-                json={"customer_email": "user@example.com", "tier": "pro"},
+                json={"tier": "pro"},
+                headers={"X-Session-Token": "session-1"},
             )
 
     assert response.status_code == 503
@@ -116,20 +158,20 @@ def test_checkout_reports_bad_price_configuration_to_website():
 
 def test_checkout_reports_stripe_price_not_found():
     app = create_app()
-    free_user = {"email": "user@example.com", "tier": "free"}
     stripe_error = stripe_service.stripe.error.InvalidRequestError("No such price", "line_items")
     stripe_error.code = "resource_missing"
     stripe_error.param = "line_items[0][price]"
     stripe_error.request_id = "req_test123"
 
-    with app.test_client() as client:
-        with patch("routes.stripe_routes.get_user_by_email", return_value=free_user), patch(
+    with app.test_client() as client, _authenticated(FREE_USER):
+        with patch(
             "routes.stripe_routes.create_checkout_session",
             side_effect=stripe_error,
         ):
             response = client.post(
                 "/api/stripe/create-checkout-session",
-                json={"customer_email": "user@example.com", "tier": "pro"},
+                json={"tier": "pro"},
+                headers={"X-Session-Token": "session-1"},
             )
 
     assert response.status_code == 503
@@ -142,16 +184,15 @@ def test_checkout_reports_stripe_price_not_found():
 
 def test_checkout_reports_missing_secret_key():
     app = create_app()
-    free_user = {"email": "user@example.com", "tier": "free"}
-
-    with app.test_client() as client, patch(
-        "routes.stripe_routes.get_user_by_email", return_value=free_user
-    ), patch.object(stripe_service.Config, "STRIPE_SECRET_KEY", None), patch.dict(
+    with app.test_client() as client, _authenticated(FREE_USER), patch.object(
+        stripe_service.Config, "STRIPE_SECRET_KEY", None
+    ), patch.dict(
         stripe_service.TIER_PRICE_IDS, {"pro": "price_test"}
     ):
         response = client.post(
             "/api/stripe/create-checkout-session",
-            json={"customer_email": "user@example.com", "tier": "pro"},
+            json={"tier": "pro"},
+            headers={"X-Session-Token": "session-1"},
         )
 
     assert response.status_code == 503

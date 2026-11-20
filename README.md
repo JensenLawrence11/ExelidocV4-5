@@ -99,11 +99,14 @@ The Chrome extension edits Docs through the Google Docs API. The manifest's
 `https://www.googleapis.com/auth/documents` scope. In Google Cloud, enable the
 Google Docs API and register the published Chrome Web Store extension ID on that
 OAuth client. For unpacked development, register its separate extension ID with
-a development OAuth client. The extension requests Google Docs access when the user clicks Ask. Google
+a development OAuth client. The extension requests Google Docs access when the user generates a preview. Google
 OAuth consent configuration and any required verification must be completed
-before publishing this permission. The API currently replaces the full plain-text
-document; selected-range editing and original formatting are not preserved.
-Documents containing tables or embedded objects are rejected without changes.
+before publishing this permission. Exelidoc reads the full plain-text document
+and shows a proposed replacement for review before writing anything. Applying
+the preview replaces the full document text; original formatting is not
+preserved. Documents containing tables or embedded objects are rejected without
+changes. Writes and Undo are guarded by the Docs revision, so an edit made
+after a preview stops the operation instead of being overwritten.
 The checked-in manifest currently uses the unpacked development client
 `733957481846-72v784csg244sum7vrthd2j10cdg29am.apps.googleusercontent.com`.
 Before preparing a Web Store package, change it to the published extension's
@@ -121,6 +124,16 @@ See `.env.example` at the repo root for the full list (AI provider key, Stripe k
 Flask secret key, etc). Copy it to `backend/.env` and fill in real values — never commit
 the real `.env` file (already covered in `.gitignore`).
 
+When `FLASK_ENV=production`, the backend validates its configuration at startup.
+Set a non-default `FLASK_SECRET_KEY`, the Supabase and AI provider credentials,
+email delivery settings, Stripe secret/webhook secrets and both active recurring
+price IDs, and `BILLING_RETURN_URL` to the actual HTTPS website page customers
+should return to from Stripe's billing portal. Set `FRONTEND_ORIGINS` to exact
+allowed origins (the HTTPS website origin and the published
+`chrome-extension://<extension-id>` origin); wildcard origins are rejected.
+Keep development extension IDs in local development configuration rather than
+adding them to production.
+
 ### Stripe paid plans
 
 Create active recurring prices for Pro and Enterprise in the same Stripe account
@@ -137,6 +150,33 @@ Daily AI request limits use a rolling 24-hour window: 5 for Free, 20 for Pro,
 and 50 for Enterprise. Apply `backend/supabase/migration_daily_request_limits.sql`
 once when deploying the change to reset existing accounts into a fresh window.
 
+For accounts created before password recovery was added, apply
+`backend/supabase/migration_customer_account_controls.sql` once in Supabase.
+Enable Stripe's Customer Portal in the Stripe dashboard and configure its
+allowed cancellation and plan-management behavior before enabling customer
+billing controls. The extension requires active subscriptions to be canceled
+and confirmed as ended before it allows account deletion.
+
+The website's `terms.html` and `privacy.html` are working customer-information
+drafts, not approved commercial legal documents. Replace repository issue links
+with a monitored customer support contact, establish retention and refund
+policies, and have qualified counsel review the final disclosures before launch.
+
+### Focused tests
+
+From the repository root, run the backend suite with:
+
+```powershell
+python -m pytest backend\tests
+```
+
+Install `pytest` in the active development environment if it is not already
+available. Run the extension service-worker tests with:
+
+```powershell
+node --test browser-extension\tests\background.test.js
+```
+
 
 ## Status
 
@@ -151,4 +191,3 @@ once when deploying the change to reset existing accounts into a fresh window.
 
 ### To stop server
 npm stop
-

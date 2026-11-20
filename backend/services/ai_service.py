@@ -4,6 +4,7 @@ Currently using OpenRouter (OpenAI-compatible chat completions endpoint) via
 a direct REST call -- no SDK dependency.
 """
 import json
+import logging
 import re
 
 import requests
@@ -12,10 +13,13 @@ from config import Config
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
-def _call_openrouter(system_prompt: str, user_content: str) -> str | None:
-    """Returns the raw text response, or None if no key is configured."""
+class AIServiceError(Exception):
+    """A safe-to-return error raised when the configured AI service fails."""
+
+
+def _call_openrouter(system_prompt: str, user_content: str) -> str:
     if not Config.OPENROUTER_API_KEY:
-        return None
+        raise AIServiceError("AI provider is not configured. Try again later.")
 
     headers = {
         "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
@@ -26,23 +30,30 @@ def _call_openrouter(system_prompt: str, user_content: str) -> str | None:
     if Config.OPENROUTER_SITE_NAME:
         headers["X-Title"] = Config.OPENROUTER_SITE_NAME
 
-    response = requests.post(
-        OPENROUTER_API_URL,
-        headers=headers,
-        json={
-            "model": Config.OPENROUTER_MODEL,
-            "temperature": 0,
-            "max_tokens": Config.AI_MAX_OUTPUT_TOKENS,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data["choices"][0]["message"]["content"]
+    try:
+        response = requests.post(
+            OPENROUTER_API_URL,
+            headers=headers,
+            json={
+                "model": Config.OPENROUTER_MODEL,
+                "temperature": 0,
+                "max_tokens": Config.AI_MAX_OUTPUT_TOKENS,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("AI provider returned an empty response")
+        return content
+    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
+        logging.exception("AI provider request failed")
+        raise AIServiceError("The AI provider could not complete this request. Try again later.") from error
 
 
 def _extract_json(raw: str):
@@ -79,36 +90,37 @@ def _add_context(user_content: str, context: str | None) -> str:
 
 
 def analyze_text(text: str, instruction: str | None = None, context: str | None = None) -> dict:
-    try:
-        if len(text) > Config.AI_MAX_TEXT_CHARS or len(instruction or "") > Config.AI_MAX_TEXT_CHARS:
-            return {"corrected": text, "suggestions": [], "error": "Text is too large to analyze"}
+    if len(text) > Config.AI_MAX_TEXT_CHARS or len(instruction or "") > Config.AI_MAX_TEXT_CHARS:
+        return {"corrected": text, "suggestions": [], "error": "Text is too large to analyze"}
 
-        if not text or not text.strip():
-            if not instruction or not instruction.strip():
-                return {"corrected": "", "suggestions": []}
-            generated = generate_text(instruction, context=context)
-            return {
-                "corrected": generated.get("generated", ""),
-                "suggestions": [],
-            }
-
-        user_content = (
-            f"Instruction: {instruction}\n\nText:\n{text}"
-            if instruction
-            else text
-        )
-        user_content = _add_context(user_content, context)
-        raw = _call_openrouter(TEXT_SYSTEM_PROMPT, user_content)
-        if raw is None:
-            return {"corrected": text, "suggestions": []}
-        parsed = _extract_json(raw)
+    if not text or not text.strip():
+        if not instruction or not instruction.strip():
+            return {"corrected": "", "suggestions": []}
+        generated = generate_text(instruction, context=context)
+        if generated.get("error"):
+            return {"error": generated["error"]}
         return {
-            "corrected": parsed.get("corrected", text),
-            "suggestions": parsed.get("suggestions", []),
+            "corrected": generated.get("generated", ""),
+            "suggestions": [],
         }
-    except Exception as e:
-        print(f"analyze_text error: {e}")
-        return {"corrected": text, "suggestions": []}
+
+    user_content = (
+        f"Instruction: {instruction}\n\nText:\n{text}"
+        if instruction
+        else text
+    )
+    user_content = _add_context(user_content, context)
+    raw = _call_openrouter(TEXT_SYSTEM_PROMPT, user_content)
+    try:
+        parsed = _extract_json(raw)
+        corrected = parsed.get("corrected")
+        suggestions = parsed.get("suggestions", [])
+        if not isinstance(corrected, str) or not isinstance(suggestions, list):
+            raise ValueError("AI provider returned an invalid analysis response")
+    except (ValueError, AttributeError) as error:
+        logging.exception("AI provider returned an invalid analysis response")
+        raise AIServiceError("The AI provider returned an invalid response. Try again later.") from error
+    return {"corrected": corrected, "suggestions": suggestions}
 
 
 # ---------------------------------------------------------------------------
@@ -128,18 +140,19 @@ GENERATE_SYSTEM_PROMPT = (
 
 
 def generate_text(prompt: str, context: str | None = None) -> dict:
-    try:
-        if len(prompt) > Config.AI_MAX_TEXT_CHARS:
-            return {"generated": "", "error": "Prompt is too large to process"}
+    if len(prompt) > Config.AI_MAX_TEXT_CHARS:
+        return {"generated": "", "error": "Prompt is too large to process"}
 
-        raw = _call_openrouter(GENERATE_SYSTEM_PROMPT, _add_context(prompt, context))
-        if raw is None:
-            return {"generated": "", "error": "AI provider not configured"}
+    raw = _call_openrouter(GENERATE_SYSTEM_PROMPT, _add_context(prompt, context))
+    try:
         parsed = _extract_json(raw)
-        return {"generated": parsed.get("generated", "")}
-    except Exception as e:
-        print(f"generate_text error: {e}")
-        return {"generated": "", "error": "Generation failed, try again"}
+        generated = parsed.get("generated")
+        if not isinstance(generated, str):
+            raise ValueError("AI provider returned an invalid generation response")
+    except (ValueError, AttributeError) as error:
+        logging.exception("AI provider returned an invalid generation response")
+        raise AIServiceError("The AI provider returned an invalid response. Try again later.") from error
+    return {"generated": generated}
 
 
 # ---------------------------------------------------------------------------
@@ -183,24 +196,26 @@ def analyze_spreadsheet_range(values: list, context: str | None = None) -> dict:
     if not editable_cells:
         return {"correctedValues": values, "notes": []}
 
+    user_content = _add_context(json.dumps(editable_cells), context)
+    raw = _call_openrouter(RANGE_SYSTEM_PROMPT, user_content)
     try:
-        user_content = _add_context(json.dumps(editable_cells), context)
-        raw = _call_openrouter(RANGE_SYSTEM_PROMPT, user_content)
-        if raw is None:
-            return {"correctedValues": values, "notes": []}
-
         parsed = _extract_json(raw)
-        corrected = parsed.get("corrected", editable_cells)
+        corrected = parsed.get("corrected")
         notes = parsed.get("notes", [])
 
-        if len(corrected) != len(editable_cells):
-            return {"correctedValues": values, "notes": []}
+        if (
+            not isinstance(corrected, list)
+            or len(corrected) != len(editable_cells)
+            or any(not isinstance(value, str) for value in corrected)
+            or not isinstance(notes, list)
+        ):
+            raise ValueError("AI provider returned an invalid range response")
+    except (ValueError, AttributeError) as error:
+        logging.exception("AI provider returned an invalid range response")
+        raise AIServiceError("The AI provider returned an invalid response. Try again later.") from error
 
-        result = [row[:] for row in values]
-        for (r, c), new_value in zip(positions, corrected):
-            result[r][c] = new_value
+    result = [row[:] for row in values]
+    for (r, c), new_value in zip(positions, corrected):
+        result[r][c] = new_value
 
-        return {"correctedValues": result, "notes": notes}
-    except Exception as e:
-        print(f"analyze_spreadsheet_range error: {e}")
-        return {"correctedValues": values, "notes": []}
+    return {"correctedValues": result, "notes": notes}

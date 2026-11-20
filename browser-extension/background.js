@@ -57,6 +57,11 @@ function extractDocsText(content = []) {
   }).join("");
 }
 
+function getDocumentPlainText(document) {
+  const text = extractDocsText(document.body?.content || []);
+  return text.endsWith("\n") ? text.slice(0, -1) : text;
+}
+
 function assertPlainTextDocument(content = []) {
   const hasUnsupportedContent = content.some((item) => {
     if (!item.paragraph) return !item.sectionBreak;
@@ -100,7 +105,8 @@ async function replaceGoogleDocumentText(document, text, accessToken) {
       writeControl: { requiredRevisionId: document.revisionId },
     }),
   });
-  await readGoogleApiResponse(response);
+  const result = await readGoogleApiResponse(response);
+  return result.writeControl?.requiredRevisionId || document.revisionId;
 }
 
 async function handleGoogleDocsAnalysis(message, sender) {
@@ -111,8 +117,10 @@ async function handleGoogleDocsAnalysis(message, sender) {
   const accessToken = await getGoogleDocsAccessToken();
   const document = await getGoogleDocument(documentId, accessToken);
   assertPlainTextDocument(document.body?.content || []);
-  const previousText = extractDocsText(document.body?.content || []).replace(/\n+$/, "");
-  const originalText = previousText.trim();
+  if (typeof document.revisionId !== "string") {
+    throw new Error("Google Docs did not return a document revision. Refresh and try again.");
+  }
+  const originalText = getDocumentPlainText(document);
   const response = await fetch(`${BACKEND_URL}/api/ai/analyze-text`, {
     method: "POST",
     headers: {
@@ -132,21 +140,56 @@ async function handleGoogleDocsAnalysis(message, sender) {
   }
   if (data.error) throw new Error(data.error);
 
-  const correctedText = typeof data.corrected === "string" ? data.corrected : originalText;
-  const changed = correctedText !== originalText;
-  if (changed) {
-    await replaceGoogleDocumentText(document, correctedText, accessToken);
+  if (typeof data.corrected !== "string") {
+    throw new Error("Exelidoc returned an invalid document preview. Your document was not changed.");
   }
-  return { ok: true, data, changed, previousText };
+  const correctedText = data.corrected;
+  return {
+    ok: true,
+    data,
+    changed: correctedText !== originalText,
+    correctedText,
+    revisionId: document.revisionId,
+  };
+}
+
+async function applyGoogleDocumentEdit(message, sender) {
+  const documentId = getDocsDocumentId(message, sender);
+  if (typeof message.text !== "string" || typeof message.revisionId !== "string") {
+    throw new Error("The document preview is invalid. Generate it again and retry.");
+  }
+
+  const accessToken = await getGoogleDocsAccessToken();
+  const document = await getGoogleDocument(documentId, accessToken);
+  assertPlainTextDocument(document.body?.content || []);
+  if (typeof document.revisionId !== "string") {
+    throw new Error("Google Docs did not return a document revision. Refresh and try again.");
+  }
+  if (document.revisionId !== message.revisionId) {
+    throw new Error("The document changed after the preview. Generate a new preview before applying it.");
+  }
+
+  const revisionId = await replaceGoogleDocumentText(document, message.text, accessToken);
+  return { ok: true, previousText: getDocumentPlainText(document), revisionId };
 }
 
 async function restoreGoogleDocumentText(message, sender) {
   const documentId = getDocsDocumentId(message, sender);
+  if (typeof message.revisionId !== "string") {
+    throw new Error("The undo request is invalid. Generate a new preview before retrying.");
+  }
+
   const accessToken = await getGoogleDocsAccessToken();
   const document = await getGoogleDocument(documentId, accessToken);
   assertPlainTextDocument(document.body?.content || []);
-  await replaceGoogleDocumentText(document, String(message.text || ""), accessToken);
-  return { ok: true };
+  if (typeof document.revisionId !== "string") {
+    throw new Error("Google Docs did not return a document revision. Refresh and try again.");
+  }
+  if (document.revisionId !== message.revisionId) {
+    throw new Error("The document changed after Exelidoc edited it. Undo was stopped to avoid overwriting newer changes.");
+  }
+  const revisionId = await replaceGoogleDocumentText(document, String(message.text || ""), accessToken);
+  return { ok: true, revisionId };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -160,10 +203,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "APPLY_GOOGLE_DOC_EDIT") {
+    applyGoogleDocumentEdit(message, sender)
+      .then(sendResponse)
+      .catch((error) => {
+        console.error("Exelidoc background: Google Docs apply failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Google Docs update failed." });
+      });
+    return true;
+  }
+
   if (message.type === "RESTORE_GOOGLE_DOC") {
     restoreGoogleDocumentText(message, sender)
       .then(sendResponse)
-      .catch((error) => sendResponse({ ok: false, error: error.message || "Google Docs restore failed." }));
+      .catch((error) => {
+        console.error("Exelidoc background: Google Docs undo failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Google Docs restore failed." });
+      });
     return true;
   }
 

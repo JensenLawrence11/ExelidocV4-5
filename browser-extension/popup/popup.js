@@ -8,9 +8,12 @@ const signInBtn = document.getElementById("sign-in-btn");
 const signOutBtn = document.getElementById("sign-out-btn");
 const plansSection = document.getElementById("plans-section");
 const billingStatus = document.getElementById("billing-status");
+const accountPlanStatus = document.getElementById("account-plan-status");
+const manageBillingButton = document.getElementById("manage-billing-btn");
 const historySection = document.getElementById("history-section");
 const historyList = document.getElementById("history-list");
 const loadMoreHistoryButton = document.getElementById("load-more-history-btn");
+const deleteAccountSection = document.getElementById("delete-account-section");
 let historyOffset = 0;
 let authMode = "signin";
 
@@ -72,9 +75,43 @@ function setSignedIn(email) {
   signOutBtn.hidden = !email;
   plansSection.hidden = !email;
   historySection.hidden = !email;
+  deleteAccountSection.hidden = !email;
   status.textContent = email
     ? `Signed in as ${email}. Your account is remembered in this browser.`
     : "Create an account to use Exelidoc. Free accounts include 5 AI requests every 24 hours.";
+}
+
+async function loadAccountStatus() {
+  try {
+    const response = await sessionFetch("/api/auth/account");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not load account status.");
+
+    accountPlanStatus.textContent = `Plan: ${data.tier}. Subscription: ${data.subscription_status.replaceAll("_", " ")}.`;
+    manageBillingButton.hidden = !data.has_billing_account;
+    document.querySelectorAll(".checkout-btn").forEach((button) => {
+      button.hidden = ["active", "trialing", "past_due"].includes(data.subscription_status);
+    });
+
+    const deleteNote = document.getElementById("delete-account-note");
+    const deleteButton = document.getElementById("delete-account-btn");
+    if (!data.has_password) {
+      deleteNote.textContent = "Set a password in the section above before deleting your account.";
+      deleteButton.disabled = true;
+    } else if (data.can_delete) {
+      deleteNote.textContent = "Deleting your account permanently removes its Exelidoc history and signs this browser out. Stripe may retain billing records.";
+      deleteButton.disabled = false;
+    } else {
+      deleteNote.textContent = "Cancel your paid subscription using Manage subscription. You can delete this account after Stripe confirms that the subscription has ended.";
+      deleteButton.disabled = true;
+    }
+  } catch (error) {
+    accountPlanStatus.textContent = error.message === "no_session"
+      ? "Sign in again to view account status."
+      : error.message;
+    manageBillingButton.hidden = true;
+    document.getElementById("delete-account-btn").disabled = true;
+  }
 }
 
 function setAuthMode(mode) {
@@ -84,6 +121,7 @@ function setAuthMode(mode) {
   document.getElementById("sign-up-mode").setAttribute("aria-selected", String(!signingIn));
   signInBtn.hidden = !signingIn;
   createAccountBtn.hidden = signingIn;
+  document.getElementById("forgot-password-btn").hidden = !signingIn;
   passwordInput.autocomplete = signingIn ? "current-password" : "new-password";
   status.textContent = signingIn ? "Sign in to use your Exelidoc account." : "Create a free account with at least 8 password characters.";
 }
@@ -92,7 +130,10 @@ setAuthMode("signin");
 
 chrome.storage.local.get(["sessionToken", "accountEmail"], (result) => {
   setSignedIn(result.sessionToken ? result.accountEmail : "");
-  if (result.sessionToken) loadHistory();
+  if (result.sessionToken) {
+    loadHistory();
+    loadAccountStatus();
+  }
 });
 
 document.getElementById("refresh-history-btn").addEventListener("click", () => loadHistory());
@@ -150,6 +191,7 @@ async function submitAuth() {
     chrome.storage.local.set({ sessionToken: data.session_token, accountEmail: data.email }, () => {
       passwordInput.value = "";
       setSignedIn(data.email);
+      loadAccountStatus();
       historyOffset = 0;
       loadHistory();
     });
@@ -166,11 +208,97 @@ signInBtn.addEventListener("click", submitAuth);
 document.getElementById("sign-in-mode").addEventListener("click", () => setAuthMode("signin"));
 document.getElementById("sign-up-mode").addEventListener("click", () => setAuthMode("signup"));
 
+document.getElementById("forgot-password-btn").addEventListener("click", async () => {
+  const email = emailInput.value.trim().toLowerCase();
+  if (!emailInput.validity.valid || !email) {
+    status.textContent = "Enter the email address for your account first.";
+    emailInput.focus();
+    return;
+  }
+
+  const button = document.getElementById("forgot-password-btn");
+  button.disabled = true;
+  status.textContent = "Requesting a password reset...";
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/request-password-reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not request a password reset.");
+    status.textContent = data.message;
+  } catch (error) {
+    console.error("Exelidoc: password reset request failed --", error);
+    status.textContent = "Could not reach Exelidoc. Try again shortly.";
+  } finally {
+    button.disabled = false;
+  }
+});
+
 signOutBtn.addEventListener("click", () => {
   chrome.storage.local.remove(["sessionToken", "accountEmail"], () => {
+    passwordInput.value = "";
+    document.getElementById("delete-password-input").value = "";
+    document.getElementById("delete-confirmation-input").value = "";
     setSignedIn("");
     status.textContent = "Signed out.";
   });
+});
+
+manageBillingButton.addEventListener("click", async () => {
+  manageBillingButton.disabled = true;
+  billingStatus.textContent = "Opening secure billing management...";
+  try {
+    const response = await sessionFetch("/api/stripe/customer-portal", { method: "POST" });
+    const data = await response.json();
+    if (!response.ok || !data.url) {
+      throw new Error(data.error || "Could not open billing management.");
+    }
+    chrome.tabs.create({ url: data.url });
+    billingStatus.textContent = "Billing management opened in a new tab.";
+  } catch (error) {
+    billingStatus.textContent = error.message;
+  } finally {
+    manageBillingButton.disabled = false;
+  }
+});
+
+document.getElementById("delete-account-btn").addEventListener("click", async () => {
+  const password = document.getElementById("delete-password-input").value;
+  const confirmation = document.getElementById("delete-confirmation-input").value.trim();
+  const deleteStatus = document.getElementById("delete-account-status");
+  const button = document.getElementById("delete-account-btn");
+  if (!password || confirmation !== "DELETE") {
+    deleteStatus.textContent = 'Enter your password and type "DELETE" exactly to confirm.';
+    return;
+  }
+
+  if (!window.confirm("Permanently delete your Exelidoc account and its saved history? This cannot be undone.")) {
+    return;
+  }
+
+  button.disabled = true;
+  deleteStatus.textContent = "Deleting your account...";
+  try {
+    const response = await sessionFetch("/api/auth/account", {
+      method: "DELETE",
+      body: JSON.stringify({ password, confirmation }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not delete the account.");
+    chrome.storage.local.remove(["sessionToken", "accountEmail"], () => {
+      passwordInput.value = "";
+      document.getElementById("delete-password-input").value = "";
+      document.getElementById("delete-confirmation-input").value = "";
+      setSignedIn("");
+      deleteStatus.textContent = "Your account was deleted.";
+      status.textContent = "Your account was deleted and this browser was signed out.";
+    });
+  } catch (error) {
+    deleteStatus.textContent = error.message;
+    button.disabled = false;
+  }
 });
 
 document.getElementById("save-password-btn").addEventListener("click", async (event) => {
@@ -192,6 +320,7 @@ document.getElementById("save-password-btn").addEventListener("click", async (ev
     if (!response.ok) throw new Error(data.error || "Could not save password");
     newPassword.value = "";
     updateStatus.textContent = "Password saved. Use it to sign into your account on other devices.";
+    loadAccountStatus();
   } catch (error) {
     updateStatus.textContent = error.message;
   } finally {
@@ -201,16 +330,14 @@ document.getElementById("save-password-btn").addEventListener("click", async (ev
 
 document.querySelectorAll(".checkout-btn").forEach((button) => {
   button.addEventListener("click", async () => {
-    const email = emailInput.value.trim();
     const tier = button.dataset.tier;
     billingStatus.textContent = "Opening secure checkout...";
     document.querySelectorAll(".checkout-btn").forEach((item) => { item.disabled = true; });
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/stripe/create-checkout-session`, {
+      const response = await sessionFetch("/api/stripe/create-checkout-session", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customer_email: email, tier }),
+        body: JSON.stringify({ tier }),
       });
       const data = await response.json();
 

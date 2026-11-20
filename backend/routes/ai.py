@@ -5,7 +5,7 @@ never touch the AI provider directly -- the API key stays server-side.
 """
 from flask import Blueprint, request, jsonify, g
 
-from services.ai_service import analyze_text, analyze_spreadsheet_range, generate_text
+from services.ai_service import AIServiceError, analyze_text, analyze_spreadsheet_range, generate_text
 from services.history_service import build_selected_context, save_conversation
 from services.user_service import log_ai_usage
 from utils.auth_decorator import require_subscription
@@ -36,6 +36,14 @@ def _get_selected_context(data):
     return build_selected_context(g.user["id"], history_ids)
 
 
+def _service_error_response(result):
+    error = result.get("error")
+    if not error:
+        return None
+    status = 413 if "too large" in error.lower() else 502
+    return jsonify(error=error), status
+
+
 @ai_bp.post("/generate-text")
 @require_subscription
 def generate_text_route():
@@ -57,7 +65,13 @@ def generate_text_route():
     except ValueError as e:
         return jsonify(error=str(e)), 400
 
-    result = generate_text(prompt, context=context)
+    try:
+        result = generate_text(prompt, context=context)
+    except AIServiceError as error:
+        return jsonify(error=str(error)), 502
+    error_response = _service_error_response(result)
+    if error_response:
+        return error_response
     _save_history("generate-text", prompt, result)
     try:
         log_ai_usage(g.user["id"], "generate-text")
@@ -82,7 +96,6 @@ def analyze_text_route():
     instruction = data.get("instruction") or ""
     if not isinstance(text, str) or not isinstance(instruction, str):
         return jsonify(error="Text and instruction must be text"), 400
-    print(f"DEBUG instruction received: {instruction!r}")
     if not text.strip() and not instruction.strip():
         return jsonify(error="No text provided"), 400
 
@@ -91,7 +104,13 @@ def analyze_text_route():
     except ValueError as e:
         return jsonify(error=str(e)), 400
 
-    result = analyze_text(text, instruction, context=context)
+    try:
+        result = analyze_text(text, instruction, context=context)
+    except AIServiceError as error:
+        return jsonify(error=str(error)), 502
+    error_response = _service_error_response(result)
+    if error_response:
+        return error_response
     _save_history("analyze-text", instruction or "Analyze selected text", result)
     try:
         log_ai_usage(g.user["id"], "analyze-text")
@@ -123,7 +142,13 @@ def analyze_range_route():
     except ValueError as e:
         return jsonify(error=str(e)), 400
 
-    result = analyze_spreadsheet_range(values, context=context)
+    try:
+        result = analyze_spreadsheet_range(values, context=context)
+    except AIServiceError as error:
+        return jsonify(error=str(error)), 502
+    error_response = _service_error_response(result)
+    if error_response:
+        return error_response
     _save_history("analyze-range", "Clean up selected Excel range", result)
     try:
         log_ai_usage(g.user["id"], "analyze-range")

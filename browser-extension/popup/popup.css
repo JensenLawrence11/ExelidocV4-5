@@ -69,7 +69,7 @@ label {
   border-color: var(--blue);
 }
 
-#create-account-btn, #sign-in-btn, #sign-out-btn, #save-password-btn {
+#create-account-btn, #sign-in-btn, #sign-out-btn, #save-password-btn, #manage-billing-btn {
   margin-top: 10px;
   width: 100%;
   padding: 9px 0;
@@ -82,7 +82,7 @@ label {
   cursor: pointer;
 }
 
-#create-account-btn:hover, #sign-in-btn:hover, #sign-out-btn:hover, #save-password-btn:hover {
+#create-account-btn:hover, #sign-in-btn:hover, #sign-out-btn:hover, #save-password-btn:hover, #manage-billing-btn:hover {
   background: var(--blue-deep);
 }
 
@@ -96,6 +96,22 @@ label {
   background: #fff;
   color: var(--blue);
   border: 1px solid var(--blue);
+}
+
+.text-btn {
+  display: block;
+  margin: 8px 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font: 12px var(--font-display);
+  cursor: pointer;
+}
+
+.text-btn:hover,
+.legal-links a:hover {
+  text-decoration: underline;
 }
 
 #status {
@@ -148,6 +164,55 @@ label {
   margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid #EEF1F7;
+}
+
+#delete-account-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #EEF1F7;
+}
+
+#delete-password-input, #delete-confirmation-input {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 1px solid #D7DDEA;
+  font: 12px var(--font-mono);
+}
+
+.danger-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 9px 8px;
+  border: 1px solid #a12622;
+  background: #fff;
+  color: #a12622;
+  font: 600 12px var(--font-display);
+  cursor: pointer;
+}
+
+.danger-btn:hover {
+  background: #fce8e6;
+}
+
+.danger-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.legal-links {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid #EEF1F7;
+  font-size: 11px;
+}
+
+.legal-links a {
+  color: var(--gray);
 }
 
 h2 {

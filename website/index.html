@@ -243,81 +243,30 @@
       <div class="section-inner">
         <div class="plans-head">
           <div><p class="section-kicker">One account · your choice</p><h2 class="section-heading">Choose your request limit.</h2></div>
-          <p class="section-intro">Free accounts are created in the extension, not Stripe. Create an account first, then enter that exact email here to start a paid Stripe Checkout subscription. A 409 means the account was not found or already has an active paid plan.</p>
+          <p class="section-intro">Create or sign in to your Exelidoc account in the extension. Paid checkout is started from the signed-in account so billing cannot be attached to another user's email.</p>
         </div>
         <div class="plan-grid">
           <article class="plan"><span class="plan-name">Free</span><h3>Try Exelidoc</h3><p class="plan-limit">5 AI requests every 24 hours</p><a class="button secondary" href="#install">Install the extension</a></article>
-          <article class="plan featured"><span class="plan-name">Pro</span><h3>20 requests per day</h3><p class="plan-limit">Rolling 24-hour limit · price shown at checkout</p><button class="button checkout-button" type="button" data-tier="pro">Continue to checkout</button></article>
-          <article class="plan"><span class="plan-name">Enterprise</span><h3>50 requests per day</h3><p class="plan-limit">Rolling 24-hour limit · price shown at checkout</p><button class="button checkout-button" type="button" data-tier="enterprise">Continue to checkout</button></article>
+          <article class="plan featured"><span class="plan-name">Pro</span><h3>20 requests per day</h3><p class="plan-limit">Rolling 24-hour limit · price shown at checkout</p><a class="button" href="#install">Upgrade from the extension</a></article>
+          <article class="plan"><span class="plan-name">Enterprise</span><h3>50 requests per day</h3><p class="plan-limit">Rolling 24-hour limit · price shown at checkout</p><a class="button" href="#install">Upgrade from the extension</a></article>
         </div>
-        <form class="billing-form" id="billing-form" novalidate>
-          <label class="visually-hidden" for="billing-email">Account email for paid checkout</label>
-          <input id="billing-email" type="email" autocomplete="email" placeholder="Email used for your Exelidoc account" required />
-        </form>
-        <p class="billing-error" id="billing-error" role="status" aria-live="polite"></p>
       </div>
     </section>
 
     <section class="section privacy-band" id="privacy">
       <div class="section-inner">
-        <div><p class="section-kicker">Your text, on your instruction</p><h2>Know what gets sent.</h2><p>Text and instructions you submit from the browser extension or Office preview are sent to Exelidoc's backend and AI provider to fulfill your request. Account details and request usage are also processed. Don't submit sensitive information unless you are authorized to do so.</p></div>
-        <a href="privacy.html">Read the privacy policy</a>
+        <div><p class="section-kicker">Your text, on your instruction</p><h2>Know what gets sent.</h2><p>Text and instructions you submit from the browser extension or Office preview are sent to Exelidoc's backend and AI provider to fulfill your request. Prompts and AI replies may also be saved to account history. Account details and request usage are processed. Don't submit sensitive information unless you are authorized to do so.</p></div>
+        <div><a href="privacy.html">Read the privacy policy</a><br /><a href="terms.html">Read the draft terms</a></div>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="footer-brand"><img src="assets/brand-icon-128.png" alt="" />Exelidoc</div>
-    <div class="footer-links"><a href="#features">What it does</a><a href="#install">Chrome install</a><a href="#office-preview">Office preview</a><a href="#plans">Plans</a><a href="privacy.html">Privacy</a></div>
+    <div class="footer-links"><a href="#features">What it does</a><a href="#install">Chrome install</a><a href="#office-preview">Office preview</a><a href="#plans">Plans</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms (draft)</a><a href="https://github.com/JensenLawrence11/ExelidocV4-5/issues">Support</a></div>
     <p class="copyright">&copy; 2026 Exelidoc</p>
     <p class="site-status">Exelidoc may respond slowly because it relies on free-tier services and is still in development. Availability and response times can vary.</p>
   </footer>
 
-  <script>
-    const BACKEND_URL = "https://exelidocv4-5.onrender.com";
-    const billingEmail = document.getElementById("billing-email");
-    const billingError = document.getElementById("billing-error");
-
-    document.querySelectorAll(".checkout-button").forEach((button) => {
-      button.addEventListener("click", async () => {
-        const email = billingEmail.value.trim();
-        if (!billingEmail.validity.valid || !email) {
-          billingError.textContent = "Enter the email for the account you created in the extension.";
-          billingEmail.focus();
-          return;
-        }
-
-        billingError.textContent = "Connecting to secure checkout...";
-        button.disabled = true;
-        try {
-          const response = await fetch(`${BACKEND_URL}/api/stripe/create-checkout-session`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ customer_email: email, tier: button.dataset.tier }),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok || !data.url) {
-            const stripeDetails = data.stripe_request_id
-              ? ` Stripe request: ${data.stripe_request_id}${data.stripe_code ? ` (${data.stripe_code})` : ""}${data.stripe_param ? `, parameter: ${data.stripe_param}` : ""}.`
-              : "";
-            if (response.status === 409 && data.error?.includes("Create your free account")) {
-              billingError.textContent = "No Exelidoc account was found for that email. Create the free account in the extension first, then try again with that same email.";
-            } else if (response.status === 409 && data.error?.includes("active paid plan")) {
-              billingError.textContent = "This account already has an active paid plan. Plan changes are not supported yet.";
-            } else {
-              billingError.textContent = `${data.error || "Checkout could not start. Try again shortly."}${stripeDetails}`;
-            }
-            return;
-          }
-          window.location.assign(data.url);
-        } catch (error) {
-          console.error("Exelidoc checkout request failed:", error);
-          billingError.textContent = "Could not reach Exelidoc. Please try again shortly.";
-        } finally {
-          button.disabled = false;
-        }
-      });
-    });
-  </script>
 </body>
 </html>
