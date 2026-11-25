@@ -1,6 +1,6 @@
 // Service worker: remembers the signed-in user with a session token, not a raw API key.
 
-const BACKEND_URL = "http://127.0.0.1:5001";
+const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 const GOOGLE_DOCS_API = "https://docs.googleapis.com/v1/documents";
 
 function getDocsDocumentId(message, sender) {

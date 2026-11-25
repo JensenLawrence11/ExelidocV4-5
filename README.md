@@ -92,6 +92,11 @@ npm start                         # sideloads into Excel, serves on https://loca
 ### Browser Extension
 Chrome/Edge → `chrome://extensions` → Enable Developer Mode → Load Unpacked → select `browser-extension/`
 
+The unpacked extension uses the production Render API, including live Stripe
+Checkout when Render is configured for live mode. Its Stripe mode comes from
+Render, not the local `backend/.env`. Treat checkout links opened from this
+extension as live purchases.
+
 #### Google Docs API setup
 
 The Chrome extension edits Docs through the Google Docs API. The manifest's
@@ -129,10 +134,10 @@ Set a non-default `FLASK_SECRET_KEY`, the Supabase and AI provider credentials,
 `EMAIL_FROM_ADDRESS` and either `RESEND_API_KEY` or SMTP settings, Stripe
 secret/webhook secrets and all active recurring price IDs, and `BILLING_RETURN_URL`
 to the actual HTTPS website page customers should return to from Stripe's billing
-portal. Set `FRONTEND_ORIGINS` to exact allowed origins (the HTTPS website origin and the published
-`chrome-extension://<extension-id>` origin); wildcard origins are rejected.
-Keep development extension IDs in local development configuration rather than
-adding them to production.
+portal. Set `FRONTEND_ORIGINS` to exact allowed origins (the HTTPS website origin and the
+published `chrome-extension://<extension-id>` origin); wildcard origins are
+rejected. If using the unpacked extension against Render, temporarily include
+its generated `chrome-extension://<unpacked-id>` origin as well.
 
 For transactional email, Resend's HTTPS API is recommended on Render Free;
 Render Free web services block outbound SMTP ports 25, 465, and 587. Verify

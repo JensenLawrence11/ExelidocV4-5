@@ -1,11 +1,23 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app import create_app
-from services.ai_service import AIServiceError, analyze_text
+from services.ai_service import AIServiceError, _call_openrouter, analyze_text
 
 
 USER = {"id": "user-1", "email": "user@example.com", "tier": "free"}
+
+
+def test_openrouter_request_uses_configured_model():
+    response = Mock()
+    response.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
+
+    with patch("services.ai_service.Config.OPENROUTER_API_KEY", "test-key"), patch(
+        "services.ai_service.Config.OPENROUTER_MODEL", "google/gemini-3.8-flash"
+    ), patch("services.ai_service.requests.post", return_value=response) as post:
+        assert _call_openrouter("system prompt", "user prompt") == "ok"
+
+    assert post.call_args.kwargs["json"]["model"] == "google/gemini-3.8-flash"
 
 
 def test_missing_provider_configuration_raises_instead_of_returning_original_text():

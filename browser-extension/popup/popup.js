@@ -1,4 +1,4 @@
-const BACKEND_URL = "http://127.0.0.1:5001";
+const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 
 const status = document.getElementById("status");
 const emailInput = document.getElementById("email-input");
