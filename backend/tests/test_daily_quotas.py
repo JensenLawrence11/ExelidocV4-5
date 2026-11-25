@@ -29,8 +29,13 @@ def _run_quota_check(tier, requests_used, reset_at):
     return result, supabase
 
 
-def test_daily_tier_limits_are_five_twenty_and_fifty():
-    assert Config.TIER_LIMITS == {"free": 5, "pro": 20, "enterprise": 50}
+def test_daily_tier_limits_include_monthly_plan():
+    assert Config.TIER_LIMITS == {
+        "free": 5,
+        "monthly": 10,
+        "pro": 20,
+        "enterprise": 50,
+    }
     assert user_service.PERIOD_LENGTH == timedelta(days=1)
 
 

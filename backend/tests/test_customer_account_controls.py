@@ -224,6 +224,25 @@ def test_account_deletion_requires_paid_subscription_to_be_canceled():
     delete_account.assert_not_called()
 
 
+def test_monthly_subscription_must_be_canceled_before_account_deletion():
+    app = create_app()
+    user = {**USER, "tier": "monthly", "subscription_status": "active", "stripe_customer_id": "cus-1"}
+
+    with app.test_client() as client, patch(
+        "utils.auth_decorator.get_user_by_session_token", return_value=user
+    ), patch("routes.auth.password_matches", return_value=True), patch(
+        "routes.auth.delete_user"
+    ) as delete_account:
+        response = client.delete(
+            "/api/auth/account",
+            json={"password": "current password", "confirmation": "DELETE"},
+            headers={"X-Session-Token": "session-1"},
+        )
+
+    assert response.status_code == 409
+    delete_account.assert_not_called()
+
+
 def test_canceled_account_can_be_deleted_after_password_confirmation():
     app = create_app()
 

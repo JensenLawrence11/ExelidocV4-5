@@ -14,24 +14,23 @@ def _authenticated(user):
     return patch("utils.auth_decorator.get_user_by_session_token", return_value=user)
 
 
-def test_stripe_uses_public_url_and_monthly_alias(monkeypatch):
+def test_stripe_uses_distinct_monthly_and_pro_prices(monkeypatch):
     monkeypatch.setenv("APP_PUBLIC_URL", "https://example.com")
     monkeypatch.setenv("STRIPE_MODE", "live")
     monkeypatch.setenv("STRIPE_LIVE_SECRET_KEY", "rk_live_selected")
     monkeypatch.setenv("STRIPE_SECRET_KEY", "rk_live_legacy")
-    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_PRO", "")
-    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_ENTERPRISE", "")
-    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_MONTHLY", "")
-    monkeypatch.setenv("STRIPE_PRICE_ID_PRO", "")
-    monkeypatch.setenv("STRIPE_PRICE_ID_ENTERPRISE", "")
-    monkeypatch.setenv("STRIPE_PRICE_ID_MONTHLY", "price_monthly_alias")
+    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_MONTHLY", "price_live_monthly")
+    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_PRO", "price_live_pro")
+    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_ENTERPRISE", "price_live_enterprise")
 
     importlib.reload(config)
     importlib.reload(stripe_service)
 
     assert config.Config.STRIPE_SECRET_KEY == "rk_live_selected"
-    assert config.Config.STRIPE_PRICE_ID_PRO == "price_monthly_alias"
-    assert stripe_service.TIER_PRICE_IDS["pro"] == "price_monthly_alias"
+    assert config.Config.STRIPE_PRICE_ID_MONTHLY == "price_live_monthly"
+    assert config.Config.STRIPE_PRICE_ID_PRO == "price_live_pro"
+    assert stripe_service.TIER_PRICE_IDS["monthly"] == "price_live_monthly"
+    assert stripe_service.TIER_PRICE_IDS["pro"] == "price_live_pro"
     assert stripe_service._public_base_url() == "https://example.com"
     assert stripe_service._success_url().startswith("https://example.com/success.html?session_id=")
     assert stripe_service._cancel_url() == "https://example.com/download.html"
@@ -42,10 +41,12 @@ def test_test_mode_uses_test_prefixed_stripe_values(monkeypatch):
     monkeypatch.setenv("STRIPE_TEST_SECRET_KEY", "sk_test_selected")
     monkeypatch.setenv("STRIPE_TEST_PUBLISHABLE_KEY", "pk_test_selected")
     monkeypatch.setenv("STRIPE_TEST_WEBHOOK_SECRET", "whsec_test_selected")
+    monkeypatch.setenv("STRIPE_TEST_PRICE_ID_MONTHLY", "price_test_monthly")
     monkeypatch.setenv("STRIPE_TEST_PRICE_ID_PRO", "price_test_pro")
     monkeypatch.setenv("STRIPE_TEST_PRICE_ID_ENTERPRISE", "price_test_enterprise")
     monkeypatch.setenv("STRIPE_SECRET_KEY", "rk_live_legacy")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_live_legacy")
+    monkeypatch.setenv("STRIPE_PRICE_ID_MONTHLY", "price_live_monthly")
     monkeypatch.setenv("STRIPE_PRICE_ID_PRO", "price_live_pro")
     monkeypatch.setenv("STRIPE_PRICE_ID_ENTERPRISE", "price_live_enterprise")
 
@@ -56,7 +57,9 @@ def test_test_mode_uses_test_prefixed_stripe_values(monkeypatch):
     assert config.Config.STRIPE_SECRET_KEY == "sk_test_selected"
     assert config.Config.STRIPE_PUBLISHABLE_KEY == "pk_test_selected"
     assert config.Config.STRIPE_WEBHOOK_SECRET == "whsec_test_selected"
+    assert config.Config.STRIPE_PRICE_ID_MONTHLY == "price_test_monthly"
     assert config.Config.STRIPE_PRICE_ID_PRO == "price_test_pro"
+    assert stripe_service.TIER_PRICE_IDS["monthly"] == "price_test_monthly"
     assert config.Config.STRIPE_PRICE_ID_ENTERPRISE == "price_test_enterprise"
     assert stripe_service.stripe.api_key == "sk_test_selected"
 
@@ -104,6 +107,29 @@ def test_checkout_reuses_authenticated_users_existing_stripe_customer():
 
     assert create_session.call_args.kwargs["customer"] == "cus-existing"
     assert "customer_email" not in create_session.call_args.kwargs
+    assert "payment_method_types" not in create_session.call_args.kwargs
+    assert create_session.call_args.kwargs["stripe_version"] == "2025-03-31.basil"
+
+
+def test_monthly_checkout_uses_monthly_price_and_tier_metadata():
+    with patch.object(stripe_service.Config, "STRIPE_SECRET_KEY", "sk_test"), patch.dict(
+        stripe_service.TIER_PRICE_IDS, {"monthly": "price_monthly"}
+    ), patch(
+        "services.stripe_service.stripe.checkout.Session.create",
+        return_value=type("CheckoutSession", (), {"url": "https://checkout.example/session"})(),
+    ) as create_session:
+        stripe_service.create_checkout_session(
+            customer_email="user@example.com",
+            tier="monthly",
+        )
+
+    assert create_session.call_args.kwargs["line_items"] == [
+        {"price": "price_monthly", "quantity": 1}
+    ]
+    assert create_session.call_args.kwargs["metadata"] == {"tier": "monthly"}
+    assert create_session.call_args.kwargs["subscription_data"] == {
+        "metadata": {"tier": "monthly"}
+    }
 
 
 def test_paid_checkout_requires_authenticated_session():
@@ -142,6 +168,51 @@ def test_paid_checkout_does_not_create_duplicate_active_subscription():
     assert response.status_code == 409
     assert "active paid plan" in response.get_json()["error"]
     create_checkout.assert_not_called()
+
+
+def test_monthly_checkout_does_not_create_duplicate_active_subscription():
+    app = create_app()
+    paid_user = {
+        "id": "paid-user",
+        "email": "paid@example.com",
+        "tier": "monthly",
+        "subscription_status": "active",
+    }
+
+    with app.test_client() as client, _authenticated(paid_user):
+        with patch(
+            "routes.stripe_routes.create_checkout_session"
+        ) as create_checkout:
+            response = client.post(
+                "/api/stripe/create-checkout-session",
+                json={"tier": "monthly"},
+                headers={"X-Session-Token": "session-1"},
+            )
+
+    assert response.status_code == 409
+    create_checkout.assert_not_called()
+
+
+def test_monthly_checkout_is_available_to_free_accounts():
+    app = create_app()
+
+    with app.test_client() as client, _authenticated(FREE_USER):
+        with patch(
+            "routes.stripe_routes.create_checkout_session",
+            return_value=type("CheckoutSession", (), {"url": "https://checkout.example/session"})(),
+        ) as create_checkout:
+            response = client.post(
+                "/api/stripe/create-checkout-session",
+                json={"tier": "monthly"},
+                headers={"X-Session-Token": "session-1"},
+            )
+
+    assert response.status_code == 200
+    create_checkout.assert_called_once_with(
+        customer_email="user@example.com",
+        tier="monthly",
+        customer_id=None,
+    )
 
 
 def test_checkout_uses_authenticated_account_not_request_email():
@@ -251,3 +322,42 @@ def test_webhook_reports_missing_signing_secret():
 
     assert response.status_code == 503
     assert "STRIPE_TEST_WEBHOOK_SECRET" in response.get_json()["error"]
+
+
+def test_monthly_checkout_webhook_assigns_monthly_tier():
+    app = create_app()
+    app.config["STRIPE_WEBHOOK_SECRET"] = "whsec_test"
+    event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "customer": "cus-monthly",
+                "customer_email": "user@example.com",
+                "subscription": "sub-monthly",
+                "metadata": {"tier": "monthly"},
+            }
+        },
+    }
+
+    with app.test_client() as client, patch(
+        "routes.stripe_routes.handle_webhook_event", return_value=event
+    ), patch(
+        "routes.stripe_routes.get_user_by_stripe_customer", return_value=None
+    ), patch(
+        "routes.stripe_routes.get_user_by_email", return_value={"email": "user@example.com"}
+    ), patch(
+        "routes.stripe_routes.link_stripe_customer"
+    ), patch(
+        "routes.stripe_routes.set_subscription_status"
+    ), patch(
+        "routes.stripe_routes.set_user_tier"
+    ) as set_user_tier:
+        response = client.post(
+            "/api/stripe/webhook",
+            data=b"{}",
+            headers={"Stripe-Signature": "test-signature"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"received": True, "type": "checkout.session.completed"}
+    set_user_tier.assert_called_once_with("cus-monthly", "monthly")

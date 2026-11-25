@@ -21,7 +21,7 @@
   },
   "permissions": ["storage", "identity"],
   "host_permissions": [
-    "https://exelidocv4-5.onrender.com/*",
+    "http://127.0.0.1:5001/*",
     "https://docs.googleapis.com/*"
   ],
   "content_scripts": [

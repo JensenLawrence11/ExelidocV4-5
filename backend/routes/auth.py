@@ -35,7 +35,7 @@ EMAIL_PATTERN = re.compile(
     r"(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$",
     re.IGNORECASE,
 )
-PAID_TIERS = {"pro", "enterprise"}
+PAID_TIERS = {"monthly", "pro", "enterprise"}
 ENDED_SUBSCRIPTION_STATUSES = {"canceled", "incomplete_expired"}
 
 

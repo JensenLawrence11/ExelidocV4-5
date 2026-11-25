@@ -38,7 +38,7 @@ class Config:
     OPENROUTER_SITE_URL = os.environ.get("OPENROUTER_SITE_URL", "")
     OPENROUTER_SITE_NAME = os.environ.get("OPENROUTER_SITE_NAME", "")
 
-    APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://exelidocv4-5.onrender.com")
+    APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://exelidoc.com")
     API_PUBLIC_URL = os.environ.get("API_PUBLIC_URL", "https://exelidocv4-5.onrender.com")
     BILLING_RETURN_URL = os.environ.get("BILLING_RETURN_URL")
     EMAIL_SMTP_HOST = os.environ.get("EMAIL_SMTP_HOST")
@@ -52,7 +52,8 @@ class Config:
     STRIPE_SECRET_KEY = _stripe_setting("SECRET_KEY")
     STRIPE_PUBLISHABLE_KEY = _stripe_setting("PUBLISHABLE_KEY")
     STRIPE_WEBHOOK_SECRET = _stripe_setting("WEBHOOK_SECRET")
-    STRIPE_PRICE_ID_PRO = _stripe_setting("PRICE_ID_PRO") or _stripe_setting("PRICE_ID_MONTHLY")
+    STRIPE_PRICE_ID_MONTHLY = _stripe_setting("PRICE_ID_MONTHLY")
+    STRIPE_PRICE_ID_PRO = _stripe_setting("PRICE_ID_PRO")
     STRIPE_PRICE_ID_ENTERPRISE = _stripe_setting("PRICE_ID_ENTERPRISE")
 
     @classmethod
@@ -65,6 +66,7 @@ class Config:
 
     TIER_LIMITS = {
         "free": 5,
+        "monthly": 10,
         "pro": 20,
         "enterprise": 50,
     }
@@ -82,6 +84,7 @@ class Config:
             "API_PUBLIC_URL": cls.API_PUBLIC_URL,
             cls.stripe_env_name("SECRET_KEY"): cls.STRIPE_SECRET_KEY,
             cls.stripe_env_name("WEBHOOK_SECRET"): cls.STRIPE_WEBHOOK_SECRET,
+            cls.stripe_env_name("PRICE_ID_MONTHLY"): cls.STRIPE_PRICE_ID_MONTHLY,
             cls.stripe_env_name("PRICE_ID_PRO"): cls.STRIPE_PRICE_ID_PRO,
             cls.stripe_env_name("PRICE_ID_ENTERPRISE"): cls.STRIPE_PRICE_ID_ENTERPRISE,
             "BILLING_RETURN_URL": cls.BILLING_RETURN_URL,

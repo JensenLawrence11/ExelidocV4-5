@@ -127,7 +127,7 @@ the real `.env` file (already covered in `.gitignore`).
 When `FLASK_ENV=production`, the backend validates its configuration at startup.
 Set a non-default `FLASK_SECRET_KEY`, the Supabase and AI provider credentials,
 `EMAIL_FROM_ADDRESS` and either `RESEND_API_KEY` or SMTP settings, Stripe
-secret/webhook secrets and both active recurring price IDs, and `BILLING_RETURN_URL`
+secret/webhook secrets and all active recurring price IDs, and `BILLING_RETURN_URL`
 to the actual HTTPS website page customers should return to from Stripe's billing
 portal. Set `FRONTEND_ORIGINS` to exact allowed origins (the HTTPS website origin and the published
 `chrome-extension://<extension-id>` origin); wildcard origins are rejected.
@@ -150,7 +150,7 @@ Set `STRIPE_MODE=test` or `STRIPE_MODE=live` and provide credentials with the
 matching `STRIPE_TEST_*` or `STRIPE_LIVE_*` names. Production startup rejects
 test mode or a test secret key. Existing deployments can keep using generic
 `STRIPE_*` variables in live mode; `STRIPE_LIVE_*` values take precedence when
-present. Create active recurring prices for Pro and Enterprise in the selected
+present. Create active recurring prices for Monthly, Pro, and Enterprise in the selected
 Stripe mode. Their `price_...` IDs are not Product IDs (`prod_...`). Configure a Stripe webhook pointing to
 `https://exelidocv4-5.onrender.com/api/stripe/webhook` for
 `checkout.session.completed`, `customer.subscription.updated`, and
@@ -160,8 +160,8 @@ mode. Existing live deployments may continue using `STRIPE_WEBHOOK_SECRET`.
 Checkout can succeed without the webhook, but paid access will not be recorded
 in Exelidoc until the webhook is delivered.
 
-Daily AI request limits use a rolling 24-hour window: 5 for Free, 20 for Pro,
-and 50 for Enterprise. Apply `backend/supabase/migration_daily_request_limits.sql`
+Daily AI request limits use a rolling 24-hour window: 5 for Free, 10 for Monthly,
+20 for Pro, and 50 for Enterprise. Apply `backend/supabase/migration_daily_request_limits.sql`
 once when deploying the change to reset existing accounts into a fresh window.
 
 Before enabling email verification and password recovery, apply these SQL

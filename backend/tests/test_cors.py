@@ -69,14 +69,14 @@ class CorsExtensionOriginTests(unittest.TestCase):
         self.assertIn("DELETE", response.headers["Access-Control-Allow-Methods"])
 
     def test_configured_public_app_url_allows_checkout_preflight(self):
-        with patch("app.Config.APP_PUBLIC_URL", "https://exelidoc.netlify.app"), patch(
+        with patch("app.Config.APP_PUBLIC_URL", "https://exelidoc.com"), patch(
             "app.Config.FRONTEND_ORIGINS", ["chrome-extension://test-extension"]
         ):
             client = create_app().test_client()
             response = client.options(
                 "/api/stripe/create-checkout-session",
                 headers={
-                    "Origin": "https://exelidoc.netlify.app",
+                    "Origin": "https://exelidoc.com",
                     "Access-Control-Request-Method": "POST",
                     "Access-Control-Request-Headers": "content-type",
                 },
@@ -85,7 +85,7 @@ class CorsExtensionOriginTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.headers["Access-Control-Allow-Origin"],
-            "https://exelidoc.netlify.app",
+            "https://exelidoc.com",
         )
         self.assertIn("Content-Type", response.headers["Access-Control-Allow-Headers"])
 

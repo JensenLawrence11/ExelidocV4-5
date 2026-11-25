@@ -24,7 +24,7 @@ from utils.auth_decorator import require_session
 
 stripe_bp = Blueprint("stripe", __name__)
 
-PAID_TIERS = {"pro", "enterprise"}
+PAID_TIERS = {"monthly", "pro", "enterprise"}
 
 
 @stripe_bp.post("/customer-portal")
@@ -56,7 +56,7 @@ def customer_portal_route():
 @require_session
 def create_checkout_session_route():
     """
-    Body: { "tier": "pro" | "enterprise" }
+    Body: { "tier": "monthly" | "pro" | "enterprise" }
     Requires the signed-in account session; the account email is never accepted
     from the request body.
     Returns: { "url": "https://checkout.stripe.com/..." }
