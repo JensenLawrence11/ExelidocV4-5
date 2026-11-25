@@ -139,6 +139,10 @@ Render Free web services block outbound SMTP ports 25, 465, and 587. Verify
 your sending domain with Resend before setting `RESEND_API_KEY` in the backend
 host's environment. When `RESEND_API_KEY` is set, the backend uses Resend;
 otherwise it falls back to the configured SMTP transport.
+Set `API_PUBLIC_URL` to the backend's public HTTPS origin (the Render service
+URL), because email verification and password-reset links must reach the API.
+`APP_PUBLIC_URL` is the website origin used for checkout redirects, not email
+action links.
 
 ### Stripe paid plans
 
@@ -160,8 +164,16 @@ Daily AI request limits use a rolling 24-hour window: 5 for Free, 20 for Pro,
 and 50 for Enterprise. Apply `backend/supabase/migration_daily_request_limits.sql`
 once when deploying the change to reset existing accounts into a fresh window.
 
-For accounts created before password recovery was added, apply
-`backend/supabase/migration_customer_account_controls.sql` once in Supabase.
+Before enabling email verification and password recovery, apply these SQL
+migrations once in the Supabase SQL Editor, in order:
+
+1. `backend/supabase/migration_add_session_token.sql`
+2. `backend/supabase/migration_add_password_auth.sql`
+3. `backend/supabase/migration_add_email_verification.sql`
+4. `backend/supabase/migration_customer_account_controls.sql`
+
+They add the account/session fields, pending signups, and password-reset
+functions used by the login and recovery routes.
 Enable Stripe's Customer Portal in the Stripe dashboard and configure its
 allowed cancellation and plan-management behavior before enabling customer
 billing controls. The extension requires active subscriptions to be canceled

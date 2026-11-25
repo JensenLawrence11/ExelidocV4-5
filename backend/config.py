@@ -39,6 +39,7 @@ class Config:
     OPENROUTER_SITE_NAME = os.environ.get("OPENROUTER_SITE_NAME", "")
 
     APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://exelidocv4-5.onrender.com")
+    API_PUBLIC_URL = os.environ.get("API_PUBLIC_URL", "https://exelidocv4-5.onrender.com")
     BILLING_RETURN_URL = os.environ.get("BILLING_RETURN_URL")
     EMAIL_SMTP_HOST = os.environ.get("EMAIL_SMTP_HOST")
     EMAIL_SMTP_PORT = int(os.environ.get("EMAIL_SMTP_PORT", 587))
@@ -78,6 +79,7 @@ class Config:
             "SUPABASE_SERVICE_KEY": cls.SUPABASE_SERVICE_KEY,
             "OPENROUTER_API_KEY": cls.OPENROUTER_API_KEY,
             "EMAIL_FROM_ADDRESS": cls.EMAIL_FROM_ADDRESS,
+            "API_PUBLIC_URL": cls.API_PUBLIC_URL,
             cls.stripe_env_name("SECRET_KEY"): cls.STRIPE_SECRET_KEY,
             cls.stripe_env_name("WEBHOOK_SECRET"): cls.STRIPE_WEBHOOK_SECRET,
             cls.stripe_env_name("PRICE_ID_PRO"): cls.STRIPE_PRICE_ID_PRO,
@@ -154,6 +156,18 @@ class Config:
             or public_url.fragment
         ):
             missing.append("APP_PUBLIC_URL (HTTPS origin required)")
+
+        api_public_url = urlparse(cls.API_PUBLIC_URL or "")
+        if (
+            api_public_url.scheme != "https"
+            or not api_public_url.netloc
+            or api_public_url.path
+            or api_public_url.username
+            or api_public_url.password
+            or api_public_url.query
+            or api_public_url.fragment
+        ):
+            missing.append("API_PUBLIC_URL (HTTPS API origin required)")
 
         billing_return_url = urlparse(cls.BILLING_RETURN_URL or "")
         if (

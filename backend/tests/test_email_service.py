@@ -1,7 +1,27 @@
 from unittest.mock import MagicMock, patch
 
 from config import Config
-from services.email_service import _send_email
+from services.email_service import (
+    _send_email,
+    send_password_reset_email,
+    send_verification_email,
+)
+
+
+def test_account_emails_link_to_api_url_not_website_url():
+    with patch.object(Config, "API_PUBLIC_URL", "https://api.example.com"), patch.object(
+        Config, "APP_PUBLIC_URL", "https://website.example.com"
+    ), patch("services.email_service._send_email") as send_email:
+        send_verification_email("person@example.com", "verification-token")
+        send_password_reset_email("person@example.com", "reset-token")
+
+    verification_body = send_email.call_args_list[0].args[2]
+    reset_text_body = send_email.call_args_list[1].args[2]
+    reset_html_body = send_email.call_args_list[1].args[3]
+    assert "https://api.example.com/api/auth/verify-email?token=verification-token" in verification_body
+    assert "https://api.example.com/api/auth/reset-password?token=reset-token" in reset_text_body
+    assert "https://api.example.com/api/auth/reset-password?token=reset-token" in reset_html_body
+    assert "website.example.com/api/auth" not in verification_body + reset_text_body + reset_html_body
 
 
 def test_send_email_uses_resend_api_when_configured():

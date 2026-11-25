@@ -19,6 +19,7 @@ PRODUCTION_SETTINGS = {
     "STRIPE_PRICE_ID_PRO": "price_pro",
     "STRIPE_PRICE_ID_ENTERPRISE": "price_enterprise",
     "BILLING_RETURN_URL": "https://example.com/index.html#plans",
+    "API_PUBLIC_URL": "https://api.example.com",
     "SECRET_KEY": "random-production-secret",
     "FRONTEND_ORIGINS": [
         "https://example.com",
@@ -70,6 +71,7 @@ def test_production_configuration_requires_an_email_transport():
         ("FRONTEND_ORIGINS", ["*"], "FRONTEND_ORIGINS"),
         ("STRIPE_WEBHOOK_SECRET", None, "STRIPE_WEBHOOK_SECRET"),
         ("APP_PUBLIC_URL", "http://example.com", "APP_PUBLIC_URL"),
+        ("API_PUBLIC_URL", "https://api.example.com/api", "API_PUBLIC_URL"),
         ("BILLING_RETURN_URL", "https://", "BILLING_RETURN_URL"),
     ],
 )

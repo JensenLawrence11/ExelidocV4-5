@@ -11,6 +11,13 @@ from config import Config
 RESEND_API_URL = "https://api.resend.com/emails"
 
 
+def _auth_action_url(path: str, token: str) -> str:
+    return (
+        f"{Config.API_PUBLIC_URL.rstrip('/')}/api/auth/{path}?"
+        f"{urlencode({'token': token})}"
+    )
+
+
 def _send_email(recipient: str, subject: str, body: str, html_body: str | None = None) -> None:
     if not Config.EMAIL_FROM_ADDRESS:
         raise RuntimeError("Email delivery is not configured: set EMAIL_FROM_ADDRESS")
@@ -60,10 +67,7 @@ def _send_email(recipient: str, subject: str, body: str, html_body: str | None =
 
 
 def send_verification_email(recipient: str, token: str) -> None:
-    link = (
-        f"{Config.APP_PUBLIC_URL.rstrip('/')}/api/auth/verify-email?"
-        f"{urlencode({'token': token})}"
-    )
+    link = _auth_action_url("verify-email", token)
     _send_email(
         recipient,
         "Verify your Exelidoc email address",
@@ -82,10 +86,7 @@ def send_welcome_email(recipient: str) -> None:
 
 
 def send_password_reset_email(recipient: str, token: str) -> None:
-    link = (
-        f"{Config.APP_PUBLIC_URL.rstrip('/')}/api/auth/reset-password?"
-        f"{urlencode({'token': token})}"
-    )
+    link = _auth_action_url("reset-password", token)
     _send_email(
         recipient,
         "Reset your Exelidoc password",
