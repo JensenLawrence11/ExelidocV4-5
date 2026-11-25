@@ -126,25 +126,35 @@ the real `.env` file (already covered in `.gitignore`).
 
 When `FLASK_ENV=production`, the backend validates its configuration at startup.
 Set a non-default `FLASK_SECRET_KEY`, the Supabase and AI provider credentials,
-email delivery settings, Stripe secret/webhook secrets and both active recurring
-price IDs, and `BILLING_RETURN_URL` to the actual HTTPS website page customers
-should return to from Stripe's billing portal. Set `FRONTEND_ORIGINS` to exact
-allowed origins (the HTTPS website origin and the published
+`EMAIL_FROM_ADDRESS` and either `RESEND_API_KEY` or SMTP settings, Stripe
+secret/webhook secrets and both active recurring price IDs, and `BILLING_RETURN_URL`
+to the actual HTTPS website page customers should return to from Stripe's billing
+portal. Set `FRONTEND_ORIGINS` to exact allowed origins (the HTTPS website origin and the published
 `chrome-extension://<extension-id>` origin); wildcard origins are rejected.
 Keep development extension IDs in local development configuration rather than
 adding them to production.
 
+For transactional email, Resend's HTTPS API is recommended on Render Free;
+Render Free web services block outbound SMTP ports 25, 465, and 587. Verify
+your sending domain with Resend before setting `RESEND_API_KEY` in the backend
+host's environment. When `RESEND_API_KEY` is set, the backend uses Resend;
+otherwise it falls back to the configured SMTP transport.
+
 ### Stripe paid plans
 
-Create active recurring prices for Pro and Enterprise in the same Stripe account
-and mode (test or live) as `STRIPE_SECRET_KEY`. Set their `price_...` IDs in
-`STRIPE_PRICE_ID_PRO` and `STRIPE_PRICE_ID_ENTERPRISE`. Product IDs (`prod_...`)
-are not accepted. Configure a Stripe webhook pointing to
+Set `STRIPE_MODE=test` or `STRIPE_MODE=live` and provide credentials with the
+matching `STRIPE_TEST_*` or `STRIPE_LIVE_*` names. Production startup rejects
+test mode or a test secret key. Existing deployments can keep using generic
+`STRIPE_*` variables in live mode; `STRIPE_LIVE_*` values take precedence when
+present. Create active recurring prices for Pro and Enterprise in the selected
+Stripe mode. Their `price_...` IDs are not Product IDs (`prod_...`). Configure a Stripe webhook pointing to
 `https://exelidocv4-5.onrender.com/api/stripe/webhook` for
 `checkout.session.completed`, `customer.subscription.updated`, and
 `customer.subscription.deleted`, then set its signing secret as
-`STRIPE_WEBHOOK_SECRET`. Checkout can succeed without the webhook, but paid
-access will not be recorded in Exelidoc until the webhook is delivered.
+`STRIPE_TEST_WEBHOOK_SECRET` or `STRIPE_LIVE_WEBHOOK_SECRET` for the selected
+mode. Existing live deployments may continue using `STRIPE_WEBHOOK_SECRET`.
+Checkout can succeed without the webhook, but paid access will not be recorded
+in Exelidoc until the webhook is delivered.
 
 Daily AI request limits use a rolling 24-hour window: 5 for Free, 20 for Pro,
 and 50 for Enterprise. Apply `backend/supabase/migration_daily_request_limits.sql`

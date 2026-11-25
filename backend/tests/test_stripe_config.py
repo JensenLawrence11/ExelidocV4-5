@@ -16,6 +16,12 @@ def _authenticated(user):
 
 def test_stripe_uses_public_url_and_monthly_alias(monkeypatch):
     monkeypatch.setenv("APP_PUBLIC_URL", "https://example.com")
+    monkeypatch.setenv("STRIPE_MODE", "live")
+    monkeypatch.setenv("STRIPE_LIVE_SECRET_KEY", "rk_live_selected")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "rk_live_legacy")
+    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_PRO", "")
+    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_ENTERPRISE", "")
+    monkeypatch.setenv("STRIPE_LIVE_PRICE_ID_MONTHLY", "")
     monkeypatch.setenv("STRIPE_PRICE_ID_PRO", "")
     monkeypatch.setenv("STRIPE_PRICE_ID_ENTERPRISE", "")
     monkeypatch.setenv("STRIPE_PRICE_ID_MONTHLY", "price_monthly_alias")
@@ -23,11 +29,48 @@ def test_stripe_uses_public_url_and_monthly_alias(monkeypatch):
     importlib.reload(config)
     importlib.reload(stripe_service)
 
+    assert config.Config.STRIPE_SECRET_KEY == "rk_live_selected"
     assert config.Config.STRIPE_PRICE_ID_PRO == "price_monthly_alias"
     assert stripe_service.TIER_PRICE_IDS["pro"] == "price_monthly_alias"
     assert stripe_service._public_base_url() == "https://example.com"
     assert stripe_service._success_url().startswith("https://example.com/success.html?session_id=")
     assert stripe_service._cancel_url() == "https://example.com/download.html"
+
+
+def test_test_mode_uses_test_prefixed_stripe_values(monkeypatch):
+    monkeypatch.setenv("STRIPE_MODE", "test")
+    monkeypatch.setenv("STRIPE_TEST_SECRET_KEY", "sk_test_selected")
+    monkeypatch.setenv("STRIPE_TEST_PUBLISHABLE_KEY", "pk_test_selected")
+    monkeypatch.setenv("STRIPE_TEST_WEBHOOK_SECRET", "whsec_test_selected")
+    monkeypatch.setenv("STRIPE_TEST_PRICE_ID_PRO", "price_test_pro")
+    monkeypatch.setenv("STRIPE_TEST_PRICE_ID_ENTERPRISE", "price_test_enterprise")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "rk_live_legacy")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_live_legacy")
+    monkeypatch.setenv("STRIPE_PRICE_ID_PRO", "price_live_pro")
+    monkeypatch.setenv("STRIPE_PRICE_ID_ENTERPRISE", "price_live_enterprise")
+
+    importlib.reload(config)
+    importlib.reload(stripe_service)
+
+    assert config.Config.STRIPE_MODE == "test"
+    assert config.Config.STRIPE_SECRET_KEY == "sk_test_selected"
+    assert config.Config.STRIPE_PUBLISHABLE_KEY == "pk_test_selected"
+    assert config.Config.STRIPE_WEBHOOK_SECRET == "whsec_test_selected"
+    assert config.Config.STRIPE_PRICE_ID_PRO == "price_test_pro"
+    assert config.Config.STRIPE_PRICE_ID_ENTERPRISE == "price_test_enterprise"
+    assert stripe_service.stripe.api_key == "sk_test_selected"
+
+
+def test_test_mode_does_not_fall_back_to_live_secret():
+    with patch.dict(
+        os.environ,
+        {
+            "STRIPE_MODE": "test",
+            "STRIPE_TEST_SECRET_KEY": "",
+            "STRIPE_SECRET_KEY": "rk_live_legacy",
+        },
+    ):
+        assert config._stripe_setting("SECRET_KEY") == ""
 
 
 def test_customer_portal_returns_customer_to_configured_website():
@@ -196,7 +239,7 @@ def test_checkout_reports_missing_secret_key():
         )
 
     assert response.status_code == 503
-    assert "STRIPE_SECRET_KEY" in response.get_json()["error"]
+    assert "STRIPE_TEST_SECRET_KEY" in response.get_json()["error"]
 
 
 def test_webhook_reports_missing_signing_secret():
@@ -207,4 +250,4 @@ def test_webhook_reports_missing_signing_secret():
         response = client.post("/api/stripe/webhook", data=b"{}")
 
     assert response.status_code == 503
-    assert "STRIPE_WEBHOOK_SECRET" in response.get_json()["error"]
+    assert "STRIPE_TEST_WEBHOOK_SECRET" in response.get_json()["error"]

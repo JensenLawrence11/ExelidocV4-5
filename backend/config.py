@@ -12,6 +12,15 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
+def _stripe_setting(name: str) -> str | None:
+    mode = os.environ.get("STRIPE_MODE", "live").strip().lower()
+    if mode == "test":
+        return os.environ.get(f"STRIPE_TEST_{name}")
+    if mode == "live":
+        return os.environ.get(f"STRIPE_LIVE_{name}") or os.environ.get(f"STRIPE_{name}")
+    return None
+
+
 class Config:
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev-only-insecure-key")
     ENV = os.environ.get("FLASK_ENV", "development").strip().lower()
@@ -37,11 +46,21 @@ class Config:
     EMAIL_SMTP_PASSWORD = os.environ.get("EMAIL_SMTP_PASSWORD")
     EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM_ADDRESS")
     EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Exelidoc")
-    STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
-    STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
-    STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
-    STRIPE_PRICE_ID_PRO = os.environ.get("STRIPE_PRICE_ID_PRO") or os.environ.get("STRIPE_PRICE_ID_MONTHLY")
-    STRIPE_PRICE_ID_ENTERPRISE = os.environ.get("STRIPE_PRICE_ID_ENTERPRISE")
+    RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+    STRIPE_MODE = os.environ.get("STRIPE_MODE", "live").strip().lower()
+    STRIPE_SECRET_KEY = _stripe_setting("SECRET_KEY")
+    STRIPE_PUBLISHABLE_KEY = _stripe_setting("PUBLISHABLE_KEY")
+    STRIPE_WEBHOOK_SECRET = _stripe_setting("WEBHOOK_SECRET")
+    STRIPE_PRICE_ID_PRO = _stripe_setting("PRICE_ID_PRO") or _stripe_setting("PRICE_ID_MONTHLY")
+    STRIPE_PRICE_ID_ENTERPRISE = _stripe_setting("PRICE_ID_ENTERPRISE")
+
+    @classmethod
+    def stripe_env_name(cls, name: str) -> str:
+        if cls.STRIPE_MODE == "test":
+            return f"STRIPE_TEST_{name}"
+        if cls.STRIPE_MODE == "live":
+            return f"STRIPE_LIVE_{name} or STRIPE_{name}"
+        return "STRIPE_MODE (set to 'test' or 'live')"
 
     TIER_LIMITS = {
         "free": 5,
@@ -58,18 +77,37 @@ class Config:
             "SUPABASE_URL": cls.SUPABASE_URL,
             "SUPABASE_SERVICE_KEY": cls.SUPABASE_SERVICE_KEY,
             "OPENROUTER_API_KEY": cls.OPENROUTER_API_KEY,
-            "EMAIL_SMTP_HOST": cls.EMAIL_SMTP_HOST,
             "EMAIL_FROM_ADDRESS": cls.EMAIL_FROM_ADDRESS,
-            "STRIPE_SECRET_KEY": cls.STRIPE_SECRET_KEY,
-            "STRIPE_WEBHOOK_SECRET": cls.STRIPE_WEBHOOK_SECRET,
-            "STRIPE_PRICE_ID_PRO": cls.STRIPE_PRICE_ID_PRO,
-            "STRIPE_PRICE_ID_ENTERPRISE": cls.STRIPE_PRICE_ID_ENTERPRISE,
+            cls.stripe_env_name("SECRET_KEY"): cls.STRIPE_SECRET_KEY,
+            cls.stripe_env_name("WEBHOOK_SECRET"): cls.STRIPE_WEBHOOK_SECRET,
+            cls.stripe_env_name("PRICE_ID_PRO"): cls.STRIPE_PRICE_ID_PRO,
+            cls.stripe_env_name("PRICE_ID_ENTERPRISE"): cls.STRIPE_PRICE_ID_ENTERPRISE,
             "BILLING_RETURN_URL": cls.BILLING_RETURN_URL,
         }
         missing = [
             name for name, value in required_settings.items()
             if not isinstance(value, str) or not value.strip()
         ]
+        if cls.STRIPE_MODE not in {"test", "live"}:
+            missing.append("STRIPE_MODE (use 'test' or 'live')")
+        elif cls.ENV == "production" and cls.STRIPE_MODE != "live":
+            missing.append("STRIPE_MODE (production requires live mode)")
+        elif (
+            cls.ENV == "production"
+            and isinstance(cls.STRIPE_SECRET_KEY, str)
+            and not cls.STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_"))
+        ):
+            missing.append("STRIPE_SECRET_KEY (live-mode key required in production)")
+
+        has_resend_key = (
+            isinstance(cls.RESEND_API_KEY, str) and bool(cls.RESEND_API_KEY.strip())
+        )
+        has_smtp_host = (
+            isinstance(cls.EMAIL_SMTP_HOST, str) and bool(cls.EMAIL_SMTP_HOST.strip())
+        )
+        if not has_resend_key and not has_smtp_host:
+            missing.append("EMAIL_DELIVERY (set RESEND_API_KEY or EMAIL_SMTP_HOST)")
+
         if (
             not isinstance(cls.SECRET_KEY, str)
             or not cls.SECRET_KEY.strip()

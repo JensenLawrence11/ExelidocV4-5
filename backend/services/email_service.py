@@ -4,12 +4,43 @@ from html import escape
 from smtplib import SMTP, SMTP_SSL
 from urllib.parse import urlencode
 
+import requests
+
 from config import Config
+
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
 def _send_email(recipient: str, subject: str, body: str, html_body: str | None = None) -> None:
-    if not Config.EMAIL_SMTP_HOST or not Config.EMAIL_FROM_ADDRESS:
-        raise RuntimeError("Email delivery is not configured")
+    if not Config.EMAIL_FROM_ADDRESS:
+        raise RuntimeError("Email delivery is not configured: set EMAIL_FROM_ADDRESS")
+
+    if Config.RESEND_API_KEY:
+        payload = {
+            "from": f"{Config.EMAIL_FROM_NAME} <{Config.EMAIL_FROM_ADDRESS}>",
+            "to": [recipient],
+            "subject": subject,
+            "text": body,
+        }
+        if html_body is not None:
+            payload["html"] = html_body
+
+        response = requests.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {Config.RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        return
+
+    if not Config.EMAIL_SMTP_HOST:
+        raise RuntimeError(
+            "Email delivery is not configured: set RESEND_API_KEY or EMAIL_SMTP_HOST"
+        )
 
     message = EmailMessage()
     message["Subject"] = subject

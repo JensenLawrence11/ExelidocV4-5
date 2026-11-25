@@ -28,16 +28,22 @@ def _cancel_url() -> str:
 def create_checkout_session(customer_email: str, tier: str, customer_id: str | None = None):
     """Free tier never calls this -- only 'pro' and 'enterprise' go through Stripe."""
     if not Config.STRIPE_SECRET_KEY:
-        raise ValueError("Stripe checkout is not configured: set STRIPE_SECRET_KEY in the backend environment.")
+        env_name = Config.stripe_env_name("SECRET_KEY")
+        raise ValueError(f"Stripe checkout is not configured: set {env_name} in the backend environment.")
 
     price_id = TIER_PRICE_IDS.get(tier)
     if not price_id:
-        price_env_var = "STRIPE_PRICE_ID_PRO" if tier == "pro" else "STRIPE_PRICE_ID_ENTERPRISE"
+        price_env_var = Config.stripe_env_name(
+            "PRICE_ID_PRO" if tier == "pro" else "PRICE_ID_ENTERPRISE"
+        )
         raise ValueError(f"Stripe {tier} is not configured: set {price_env_var} to an active recurring Price ID.")
     if not price_id.startswith("price_"):
+        price_env_var = Config.stripe_env_name(
+            "PRICE_ID_PRO" if tier == "pro" else "PRICE_ID_ENTERPRISE"
+        )
         raise ValueError(
             f"Stripe {tier} must use a recurring Price ID beginning with 'price_', not a Product ID. "
-            f"Check {('STRIPE_PRICE_ID_PRO' if tier == 'pro' else 'STRIPE_PRICE_ID_ENTERPRISE')}."
+            f"Check {price_env_var}."
         )
 
     session_options = {

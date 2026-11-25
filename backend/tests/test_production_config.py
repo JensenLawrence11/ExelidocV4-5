@@ -11,9 +11,10 @@ PRODUCTION_SETTINGS = {
     "SUPABASE_URL": "https://example.supabase.co",
     "SUPABASE_SERVICE_KEY": "service-key",
     "OPENROUTER_API_KEY": "provider-key",
-    "EMAIL_SMTP_HOST": "smtp.example.com",
+    "RESEND_API_KEY": "resend-api-key",
     "EMAIL_FROM_ADDRESS": "support@example.com",
-    "STRIPE_SECRET_KEY": "stripe-secret",
+    "STRIPE_MODE": "live",
+    "STRIPE_SECRET_KEY": "rk_live_example",
     "STRIPE_WEBHOOK_SECRET": "stripe-webhook",
     "STRIPE_PRICE_ID_PRO": "price_pro",
     "STRIPE_PRICE_ID_ENTERPRISE": "price_enterprise",
@@ -29,6 +30,7 @@ PRODUCTION_SETTINGS = {
 
 def _validate_with_settings(settings):
     with ExitStack() as stack:
+        stack.enter_context(patch.object(Config, "ENV", "production"))
         for name, value in settings.items():
             stack.enter_context(patch.object(Config, name, value))
         Config.validate_for_production()
@@ -38,10 +40,33 @@ def test_complete_production_configuration_passes_validation():
     _validate_with_settings(PRODUCTION_SETTINGS)
 
 
+def test_production_configuration_accepts_smtp_when_resend_is_unset():
+    settings = {
+        **PRODUCTION_SETTINGS,
+        "RESEND_API_KEY": None,
+        "EMAIL_SMTP_HOST": "smtp.example.com",
+    }
+
+    _validate_with_settings(settings)
+
+
+def test_production_configuration_requires_an_email_transport():
+    settings = {
+        **PRODUCTION_SETTINGS,
+        "RESEND_API_KEY": None,
+        "EMAIL_SMTP_HOST": None,
+    }
+
+    with pytest.raises(RuntimeError, match="EMAIL_DELIVERY"):
+        _validate_with_settings(settings)
+
+
 @pytest.mark.parametrize(
     ("name", "value", "expected_error"),
     [
         ("SECRET_KEY", "dev-only-insecure-key", "FLASK_SECRET_KEY"),
+        ("STRIPE_MODE", "test", "STRIPE_MODE"),
+        ("STRIPE_SECRET_KEY", "sk_test_example", "STRIPE_SECRET_KEY"),
         ("FRONTEND_ORIGINS", ["*"], "FRONTEND_ORIGINS"),
         ("STRIPE_WEBHOOK_SECRET", None, "STRIPE_WEBHOOK_SECRET"),
         ("APP_PUBLIC_URL", "http://example.com", "APP_PUBLIC_URL"),

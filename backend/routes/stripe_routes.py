@@ -6,6 +6,7 @@ with a tier, Stripe redirects the user through checkout, then calls our
 from flask import Blueprint, request, jsonify, current_app, g
 import stripe
 
+from config import Config
 from services.stripe_service import (
     create_checkout_session,
     create_customer_portal_session,
@@ -85,8 +86,9 @@ def create_checkout_session_route():
         )
         return jsonify(
             error=(
-                "Stripe could not find the configured price. Check that the STRIPE_PRICE_ID for this plan "
-                "is an active recurring Price ID from the same Stripe account and test/live mode as STRIPE_SECRET_KEY."
+                "Stripe could not find the configured price. Check that "
+                f"{Config.stripe_env_name(f'PRICE_ID_{tier.upper()}')} is an active recurring Price ID "
+                f"from the same Stripe account and test/live mode as {Config.stripe_env_name('SECRET_KEY')}."
             ),
             stripe_code=getattr(error, "code", None),
             stripe_param=getattr(error, "param", None),
@@ -99,7 +101,10 @@ def create_checkout_session_route():
             str(error),
         )
         return jsonify(
-            error="Stripe authentication failed. Set a valid STRIPE_SECRET_KEY for the same Stripe account as the plan prices."
+            error=(
+                "Stripe authentication failed. Set a valid "
+                f"{Config.stripe_env_name('SECRET_KEY')} for the same Stripe account as the plan prices."
+            )
         ), 503
     except stripe.error.StripeError as error:
         current_app.logger.error(
@@ -128,7 +133,8 @@ def webhook_route():
     sig_header = request.headers.get("Stripe-Signature")
     webhook_secret = current_app.config.get("STRIPE_WEBHOOK_SECRET")
     if not webhook_secret:
-        return jsonify(error="Stripe webhook is not configured: set STRIPE_WEBHOOK_SECRET in the backend environment."), 503
+        env_name = Config.stripe_env_name("WEBHOOK_SECRET")
+        return jsonify(error=f"Stripe webhook is not configured: set {env_name} in the backend environment."), 503
 
     try:
         event = handle_webhook_event(
