@@ -31,12 +31,8 @@ class Config:
 
     FRONTEND_ORIGINS = os.environ.get("FRONTEND_ORIGINS", "*").split(",")
 
-    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-    OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
-    OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-3.8-flash")
-    OPENROUTER_SITE_URL = os.environ.get("OPENROUTER_SITE_URL", "")
-    OPENROUTER_SITE_NAME = os.environ.get("OPENROUTER_SITE_NAME", "")
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-4-hydrogen")
 
     APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://exelidoc.com")
     API_PUBLIC_URL = os.environ.get("API_PUBLIC_URL", "https://exelidocv4-5.onrender.com")
@@ -79,7 +75,7 @@ class Config:
         required_settings = {
             "SUPABASE_URL": cls.SUPABASE_URL,
             "SUPABASE_SERVICE_KEY": cls.SUPABASE_SERVICE_KEY,
-            "OPENROUTER_API_KEY": cls.OPENROUTER_API_KEY,
+            "GEMINI_API_KEY": cls.GEMINI_API_KEY,
             "EMAIL_FROM_ADDRESS": cls.EMAIL_FROM_ADDRESS,
             "API_PUBLIC_URL": cls.API_PUBLIC_URL,
             cls.stripe_env_name("SECRET_KEY"): cls.STRIPE_SECRET_KEY,

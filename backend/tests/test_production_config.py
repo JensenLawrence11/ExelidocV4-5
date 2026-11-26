@@ -10,7 +10,7 @@ from config import Config
 PRODUCTION_SETTINGS = {
     "SUPABASE_URL": "https://example.supabase.co",
     "SUPABASE_SERVICE_KEY": "service-key",
-    "OPENROUTER_API_KEY": "provider-key",
+    "GEMINI_API_KEY": "provider-key",
     "RESEND_API_KEY": "resend-api-key",
     "EMAIL_FROM_ADDRESS": "support@example.com",
     "STRIPE_MODE": "live",
@@ -60,6 +60,13 @@ def test_production_configuration_requires_an_email_transport():
     }
 
     with pytest.raises(RuntimeError, match="EMAIL_DELIVERY"):
+        _validate_with_settings(settings)
+
+
+def test_production_configuration_requires_gemini_api_key():
+    settings = {**PRODUCTION_SETTINGS, "GEMINI_API_KEY": None}
+
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         _validate_with_settings(settings)
 
 

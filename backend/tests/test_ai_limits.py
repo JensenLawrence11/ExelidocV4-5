@@ -4,7 +4,7 @@ from services.ai_service import analyze_spreadsheet_range, analyze_text, generat
 
 
 def test_large_text_does_not_call_provider():
-    with patch("services.ai_service._call_openrouter") as call_provider:
+    with patch("services.ai_service._call_gemini") as call_provider:
         result = analyze_text("x" * 100_001)
 
     assert result["error"] == "Text is too large to analyze"
@@ -12,7 +12,7 @@ def test_large_text_does_not_call_provider():
 
 
 def test_large_prompt_does_not_call_provider():
-    with patch("services.ai_service._call_openrouter") as call_provider:
+    with patch("services.ai_service._call_gemini") as call_provider:
         result = generate_text("x" * 100_001)
 
     assert result["error"] == "Prompt is too large to process"
@@ -22,7 +22,7 @@ def test_large_prompt_does_not_call_provider():
 def test_large_range_does_not_call_provider():
     values = [["text"] * 5_001]
 
-    with patch("services.ai_service._call_openrouter") as call_provider:
+    with patch("services.ai_service._call_gemini") as call_provider:
         result = analyze_spreadsheet_range(values)
 
     assert result["error"] == "Selected range is too large to analyze"

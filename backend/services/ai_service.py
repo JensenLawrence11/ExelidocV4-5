@@ -1,7 +1,6 @@
 """
 All actual AI-provider calls live here, isolated from the Flask route layer.
-Currently using OpenRouter (OpenAI-compatible chat completions endpoint) via
-a direct REST call -- no SDK dependency.
+Uses Google's Gemini REST API directly, with an atomic monthly spend cap.
 """
 import json
 import logging
@@ -9,51 +8,174 @@ import re
 
 import requests
 from config import Config
+from services.ai_budget_service import (
+    release_monthly_ai_budget,
+    reserve_monthly_ai_budget,
+    settle_monthly_ai_budget,
+)
 
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+GEMINI_MODEL_NANODOLLARS_PER_TOKEN = {
+    "gemini-4-hydrogen": {
+        "input": 1_500,
+        "output": 7_500,
+    },
+}
+GEMINI_PROMPT_TOKEN_OVERHEAD = 512
 
 
 class AIServiceError(Exception):
     """A safe-to-return error raised when the configured AI service fails."""
 
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = status_code
 
-def _call_openrouter(system_prompt: str, user_content: str) -> str:
-    if not Config.OPENROUTER_API_KEY:
+
+class AIMonthlyBudgetExceeded(AIServiceError):
+    def __init__(self):
+        super().__init__(
+            "The monthly AI spending limit has been reached. Try again next month.",
+            status_code=429,
+        )
+
+
+def _estimate_max_request_cost(system_prompt: str, user_content: str) -> int:
+    rates = GEMINI_MODEL_NANODOLLARS_PER_TOKEN.get(Config.GEMINI_MODEL)
+    if not rates:
+        raise AIServiceError(
+            "The configured Gemini model is not covered by the monthly spend limit.",
+            status_code=503,
+        )
+    if Config.AI_MAX_OUTPUT_TOKENS <= 0:
+        raise AIServiceError("AI output token limit must be positive.", status_code=503)
+
+    prompt_bytes = (
+        len(system_prompt.encode("utf-8"))
+        + len(user_content.encode("utf-8"))
+        + GEMINI_PROMPT_TOKEN_OVERHEAD
+    )
+    return (
+        prompt_bytes * rates["input"]
+        + Config.AI_MAX_OUTPUT_TOKENS * rates["output"]
+    )
+
+
+def _record_budget_settlement(month_start, reservation: int, actual: int) -> None:
+    try:
+        settle_monthly_ai_budget(month_start, reservation, actual)
+    except Exception as error:
+        logging.exception("Could not settle Gemini monthly budget reservation")
+        raise AIServiceError(
+            "AI usage could not be recorded. Try again later.",
+            status_code=503,
+        ) from error
+
+
+def _release_budget_reservation(month_start, reservation: int) -> None:
+    try:
+        release_monthly_ai_budget(month_start, reservation)
+    except Exception as error:
+        logging.exception("Could not release Gemini monthly budget reservation")
+        raise AIServiceError(
+            "AI budget tracking is unavailable. Try again later.",
+            status_code=503,
+        ) from error
+
+
+def _reported_request_cost(data: dict) -> int | None:
+    usage = data.get("usageMetadata")
+    if not isinstance(usage, dict):
+        return None
+
+    prompt_tokens = usage.get("promptTokenCount")
+    candidate_tokens = usage.get("candidatesTokenCount")
+    thought_tokens = usage.get("thoughtsTokenCount", 0)
+    token_counts = (prompt_tokens, candidate_tokens, thought_tokens)
+    if any(
+        not isinstance(count, int) or isinstance(count, bool) or count < 0
+        for count in token_counts
+    ):
+        return None
+
+    rates = GEMINI_MODEL_NANODOLLARS_PER_TOKEN[Config.GEMINI_MODEL]
+    return (
+        prompt_tokens * rates["input"]
+        + (candidate_tokens + thought_tokens) * rates["output"]
+    )
+
+
+def _call_gemini(system_prompt: str, user_content: str) -> str:
+    if not Config.GEMINI_API_KEY:
         raise AIServiceError("AI provider is not configured. Try again later.")
 
-    headers = {
-        "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    if Config.OPENROUTER_SITE_URL:
-        headers["HTTP-Referer"] = Config.OPENROUTER_SITE_URL
-    if Config.OPENROUTER_SITE_NAME:
-        headers["X-Title"] = Config.OPENROUTER_SITE_NAME
+    reservation = _estimate_max_request_cost(system_prompt, user_content)
+    try:
+        month_start = reserve_monthly_ai_budget(reservation)
+    except Exception as error:
+        logging.exception("Could not reserve Gemini monthly budget")
+        raise AIServiceError(
+            "AI budget tracking is unavailable. Try again later.",
+            status_code=503,
+        ) from error
+    if month_start is None:
+        raise AIMonthlyBudgetExceeded()
 
     try:
         response = requests.post(
-            OPENROUTER_API_URL,
-            headers=headers,
+            f"{GEMINI_API_BASE_URL}/{Config.GEMINI_MODEL}:generateContent",
+            headers={
+                "x-goog-api-key": Config.GEMINI_API_KEY,
+                "Content-Type": "application/json",
+            },
             json={
-                "model": Config.OPENROUTER_MODEL,
-                "temperature": 0,
-                "max_tokens": Config.AI_MAX_OUTPUT_TOKENS,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"role": "user", "parts": [{"text": user_content}]}],
+                "generationConfig": {
+                    "temperature": 0,
+                    "maxOutputTokens": Config.AI_MAX_OUTPUT_TOKENS,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingLevel": "low"},
+                },
             },
             timeout=30,
         )
         response.raise_for_status()
+    except requests.HTTPError as error:
+        status_code = error.response.status_code if error.response is not None else 502
+        if 400 <= status_code < 500:
+            _release_budget_reservation(month_start, reservation)
+        else:
+            _record_budget_settlement(month_start, reservation, reservation)
+        logging.exception("Gemini API request failed with HTTP %s", status_code)
+        raise AIServiceError("Gemini could not complete this request. Try again later.") from error
+    except requests.RequestException as error:
+        _record_budget_settlement(month_start, reservation, reservation)
+        logging.exception("Gemini API request failed")
+        raise AIServiceError("Gemini could not complete this request. Try again later.") from error
+
+    try:
         data = response.json()
-        content = data["choices"][0]["message"]["content"]
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("AI provider returned an empty response")
-        return content
-    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
-        logging.exception("AI provider request failed")
-        raise AIServiceError("The AI provider could not complete this request. Try again later.") from error
+        parts = data["candidates"][0]["content"]["parts"]
+        content = "".join(
+            part["text"]
+            for part in parts
+            if isinstance(part, dict)
+            and isinstance(part.get("text"), str)
+            and not part.get("thought", False)
+        )
+        if not content.strip():
+            raise ValueError("Gemini returned an empty response")
+    except (ValueError, KeyError, IndexError, TypeError) as error:
+        _record_budget_settlement(month_start, reservation, reservation)
+        logging.exception("Gemini returned an invalid response")
+        raise AIServiceError("Gemini returned an invalid response. Try again later.") from error
+
+    actual_cost = _reported_request_cost(data)
+    if actual_cost is None:
+        actual_cost = reservation
+    _record_budget_settlement(month_start, reservation, actual_cost)
+    return content
 
 
 def _extract_json(raw: str):
@@ -110,7 +232,7 @@ def analyze_text(text: str, instruction: str | None = None, context: str | None 
         else text
     )
     user_content = _add_context(user_content, context)
-    raw = _call_openrouter(TEXT_SYSTEM_PROMPT, user_content)
+    raw = _call_gemini(TEXT_SYSTEM_PROMPT, user_content)
     try:
         parsed = _extract_json(raw)
         corrected = parsed.get("corrected")
@@ -143,7 +265,7 @@ def generate_text(prompt: str, context: str | None = None) -> dict:
     if len(prompt) > Config.AI_MAX_TEXT_CHARS:
         return {"generated": "", "error": "Prompt is too large to process"}
 
-    raw = _call_openrouter(GENERATE_SYSTEM_PROMPT, _add_context(prompt, context))
+    raw = _call_gemini(GENERATE_SYSTEM_PROMPT, _add_context(prompt, context))
     try:
         parsed = _extract_json(raw)
         generated = parsed.get("generated")
@@ -197,7 +319,7 @@ def analyze_spreadsheet_range(values: list, context: str | None = None) -> dict:
         return {"correctedValues": values, "notes": []}
 
     user_content = _add_context(json.dumps(editable_cells), context)
-    raw = _call_openrouter(RANGE_SYSTEM_PROMPT, user_content)
+    raw = _call_gemini(RANGE_SYSTEM_PROMPT, user_content)
     try:
         parsed = _extract_json(raw)
         corrected = parsed.get("corrected")

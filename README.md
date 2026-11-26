@@ -149,6 +149,13 @@ URL), because email verification and password-reset links must reach the API.
 `APP_PUBLIC_URL` is the website origin used for checkout redirects, not email
 action links.
 
+AI requests call Google's Gemini Developer API directly using `GEMINI_API_KEY`
+and `GEMINI_MODEL` (default `gemini-4-hydrogen`). The backend enforces a shared
+$10 USD calendar-month spend ceiling using Supabase; run
+`backend/supabase/migration_ai_monthly_budget.sql` before deploying this version.
+The cap applies to requests through this backend only. Keep the Gemini key
+restricted to the Gemini API and do not reuse it elsewhere.
+
 ### Stripe paid plans
 
 Set `STRIPE_MODE=test` or `STRIPE_MODE=live` and provide credentials with the

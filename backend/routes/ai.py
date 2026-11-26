@@ -68,7 +68,7 @@ def generate_text_route():
     try:
         result = generate_text(prompt, context=context)
     except AIServiceError as error:
-        return jsonify(error=str(error)), 502
+        return jsonify(error=str(error)), error.status_code
     error_response = _service_error_response(result)
     if error_response:
         return error_response
@@ -107,7 +107,7 @@ def analyze_text_route():
     try:
         result = analyze_text(text, instruction, context=context)
     except AIServiceError as error:
-        return jsonify(error=str(error)), 502
+        return jsonify(error=str(error)), error.status_code
     error_response = _service_error_response(result)
     if error_response:
         return error_response
@@ -145,7 +145,7 @@ def analyze_range_route():
     try:
         result = analyze_spreadsheet_range(values, context=context)
     except AIServiceError as error:
-        return jsonify(error=str(error)), 502
+        return jsonify(error=str(error)), error.status_code
     error_response = _service_error_response(result)
     if error_response:
         return error_response
