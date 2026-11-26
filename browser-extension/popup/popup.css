@@ -70,7 +70,7 @@ label {
 }
 
 #create-account-btn, #sign-in-btn, #sign-out-btn, #save-password-btn, #manage-billing-btn,
-#connect-google-btn, #google-search-btn, #ask-sources-btn, #disconnect-google-btn,
+#connect-google-btn, #google-search-btn, #ask-sources-btn, #disconnect-google-btn, #scan-gmail-now-btn,
 #load-google-sheet-range, #preview-google-sheet-edit, #apply-google-sheet-edit,
 .google-sheet-edit-btn {
   margin-top: 10px;
@@ -86,14 +86,15 @@ label {
 }
 
 #create-account-btn:hover, #sign-in-btn:hover, #sign-out-btn:hover, #save-password-btn:hover, #manage-billing-btn:hover,
-#connect-google-btn:hover, #google-search-btn:hover, #ask-sources-btn:hover,
+#connect-google-btn:hover, #google-search-btn:hover, #ask-sources-btn:hover, #scan-gmail-now-btn:hover,
 #load-google-sheet-range:hover, #preview-google-sheet-edit:hover, #apply-google-sheet-edit:hover,
 .google-sheet-edit-btn:hover {
   background: var(--blue-deep);
 }
 
 #create-account-btn:disabled, #sign-in-btn:disabled, #save-password-btn:disabled,
-#connect-google-btn:disabled, #google-search-btn:disabled, #ask-sources-btn:disabled {
+#connect-google-btn:disabled, #google-search-btn:disabled, #ask-sources-btn:disabled,
+#scan-gmail-now-btn:disabled {
   background: var(--gray);
   cursor: wait;
 }
@@ -387,6 +388,19 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+#history-list textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  margin: 6px 0;
+  resize: vertical;
+}
+
+#history-list form p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 #history-list pre {
   max-height: 140px;
   overflow: auto;
@@ -398,6 +412,12 @@ h2 {
 #clear-history-btn.secondary-btn {
   background: #fff;
   color: var(--blue);
+}
+
+#scan-gmail-now-btn.secondary-btn {
+  background: #fff;
+  color: var(--blue);
+  border: 1px solid var(--blue);
 }
 
 .plans-note, #billing-status {

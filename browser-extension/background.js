@@ -11,6 +11,13 @@ const GOOGLE_SHEETS_EDIT_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_SOURCE_LIMIT = 4;
 const GOOGLE_SOURCE_CONTENT_LIMIT = 6000;
 const GOOGLE_SHEET_EDIT_MAX_CELLS = 2500;
+const GMAIL_INDEX_BODY_LIMIT = 20000;
+const GMAIL_INDEX_PAGE_SIZE = 100;
+const GMAIL_SCAN_ALARM = "exelidoc-gmail-inbox-scan";
+const GMAIL_INDEX_DB_NAME = "exelidoc-gmail-index";
+const GMAIL_INDEX_DB_VERSION = 1;
+let gmailScanPromise = null;
+let gmailScanCancelled = false;
 
 function getDocsDocumentId(message, sender) {
   let senderUrl;
@@ -37,6 +44,18 @@ function getGoogleSourceUrl(sender) {
       return null;
     }
     return `${url.origin}${url.pathname}`;
+  } catch (error) {
+    return null;
+  }
+}
+
+function getGmailSourceRef(sender) {
+  try {
+    const url = new URL(sender.url || "");
+    if (url.hostname !== "mail.google.com") return null;
+    const identifier = url.hash.slice(1).split(/[/?]/).filter(Boolean).pop();
+    if (!/^[A-Za-z0-9_-]{10,256}$/.test(identifier || "")) return null;
+    return { provider: "google", kind: "gmail_message", id: identifier };
   } catch (error) {
     return null;
   }
@@ -72,7 +91,9 @@ async function readGoogleApiResponse(response) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = data.error?.message || `Google API returned ${response.status}.`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -137,7 +158,7 @@ function getHeader(headers, name) {
   return (headers || []).find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
-function getGmailBody(payload) {
+function getGmailBody(payload, limit = GOOGLE_SOURCE_CONTENT_LIMIT) {
   const plainParts = [];
   const htmlParts = [];
   function collect(part) {
@@ -154,7 +175,102 @@ function getGmailBody(payload) {
   return (plainParts.length ? plainParts : htmlParts)
     .join("\n")
     .trim()
-    .slice(0, GOOGLE_SOURCE_CONTENT_LIMIT);
+    .slice(0, limit);
+}
+
+function openGmailIndex() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(GMAIL_INDEX_DB_NAME, GMAIL_INDEX_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains("messages")) {
+        database.createObjectStore("messages", { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not open the local Gmail index."));
+  });
+}
+
+async function writeGmailIndexMessages(messages) {
+  if (!messages.length) return;
+  const database = await openGmailIndex();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction("messages", "readwrite");
+      const store = transaction.objectStore("messages");
+      messages.forEach((message) => store.put(message));
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("Could not update the local Gmail index."));
+      transaction.onabort = () => reject(transaction.error || new Error("The local Gmail index update was aborted."));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function deleteGmailIndexMessages(ids) {
+  if (!ids.length) return;
+  const database = await openGmailIndex();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction("messages", "readwrite");
+      const store = transaction.objectStore("messages");
+      ids.forEach((id) => store.delete(id));
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("Could not remove messages from the local Gmail index."));
+      transaction.onabort = () => reject(transaction.error || new Error("The local Gmail index update was aborted."));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function readGmailIndexMessages() {
+  const database = await openGmailIndex();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction("messages", "readonly");
+      const request = transaction.objectStore("messages").getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error || new Error("Could not read the local Gmail index."));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function clearGmailIndex() {
+  if (typeof indexedDB === "undefined") return;
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(GMAIL_INDEX_DB_NAME);
+    request.onsuccess = resolve;
+    request.onerror = () => reject(request.error || new Error("Could not clear the local Gmail index."));
+    request.onblocked = () => reject(new Error("Close other Exelidoc extension pages before clearing the Gmail index."));
+  });
+}
+
+function getGmailMessageUrl(messageId) {
+  return `https://mail.google.com/mail/#all/${encodeURIComponent(messageId)}`;
+}
+
+async function getGmailMessage(messageId, accessToken, bodyLimit = GOOGLE_SOURCE_CONTENT_LIMIT) {
+  const message = await googleApiRequest(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
+    accessToken
+  );
+  const headers = message.payload?.headers || [];
+  return {
+    id: message.id,
+    threadId: message.threadId,
+    subject: getHeader(headers, "subject") || "(no subject)",
+    from: getHeader(headers, "from"),
+    date: getHeader(headers, "date"),
+    internalDate: Number(message.internalDate) || 0,
+    snippet: message.snippet || "",
+    body: getGmailBody(message.payload, bodyLimit),
+    labelIds: Array.isArray(message.labelIds) ? message.labelIds : [],
+  };
 }
 
 function driveQueryForTerms(query) {
@@ -177,33 +293,384 @@ async function getGmailSearchResults(query, accessToken) {
     accessToken
   );
   const messages = await Promise.all((list.messages || []).map(async (item) => {
-    const message = await googleApiRequest(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(item.id)}?format=full`,
-      accessToken
-    );
-    const headers = message.payload?.headers || [];
-    const subject = getHeader(headers, "subject") || "(no subject)";
-    const from = getHeader(headers, "from");
-    const to = getHeader(headers, "to");
-    const date = getHeader(headers, "date");
-    const body = getGmailBody(message.payload) || message.snippet || "";
-    return {
-      type: "email",
-      title: subject,
-      url: `https://mail.google.com/mail/#all/${encodeURIComponent(message.id)}`,
-      content: [
-        `From: ${from}`,
-        `To: ${to}`,
-        `Date: ${date}`,
-        `Subject: ${subject}`,
-        "",
-        body,
-      ].filter(Boolean).join("\n").slice(0, GOOGLE_SOURCE_CONTENT_LIMIT),
-    };
+    const message = await getGmailMessage(item.id, accessToken);
+    return makeGmailSource(message);
   }));
   return messages;
 }
 
+function makeGmailSource(message) {
+  return {
+    type: "email",
+    title: message.subject,
+    url: getGmailMessageUrl(message.id),
+    content: [
+      `From: ${message.from}`,
+      `Date: ${message.date}`,
+      `Subject: ${message.subject}`,
+      "",
+      message.body || message.snippet,
+    ].filter(Boolean).join("\n").slice(0, GOOGLE_SOURCE_CONTENT_LIMIT),
+    sourceRef: { provider: "google", kind: "gmail_message", id: message.id },
+  };
+}
+
+function getGmailSearchTerms(query) {
+  return (query.toLocaleLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [])
+    .slice(0, 8);
+}
+
+async function searchGmailLocalIndex(query) {
+  const terms = getGmailSearchTerms(query);
+  if (!terms.length) return [];
+  const messages = await readGmailIndexMessages();
+  return messages
+    .filter((message) => {
+      const searchable = `${message.subject}\n${message.from}\n${message.snippet}\n${message.body}`.toLocaleLowerCase();
+      return terms.every((term) => searchable.includes(term));
+    })
+    .sort((left, right) => right.internalDate - left.internalDate)
+    .slice(0, GOOGLE_SOURCE_LIMIT)
+    .map(makeGmailSource);
+}
+
+async function getGmailProfile(accessToken) {
+  return googleApiRequest(
+    "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+    accessToken
+  );
+}
+
+function getGmailIndexRecord(message) {
+  return {
+    ...message,
+    body: message.body.slice(0, GMAIL_INDEX_BODY_LIMIT),
+    indexedAt: Date.now(),
+    url: getGmailMessageUrl(message.id),
+  };
+}
+
+async function getGmailScanState() {
+  const { gmailScanState } = await chrome.storage.local.get("gmailScanState");
+  return gmailScanState || {
+    status: "not_started",
+    indexedCount: 0,
+    lastScanAt: null,
+    lastError: null,
+    initialScanStarted: false,
+    initialHistoryId: null,
+    nextPageToken: null,
+    historyId: null,
+  };
+}
+
+async function setGmailScanState(state) {
+  await chrome.storage.local.set({ gmailScanState: state });
+  return state;
+}
+
+function createGmailScanAlarm(delayInMinutes, periodInMinutes = 15) {
+  chrome.alarms.create(GMAIL_SCAN_ALARM, { delayInMinutes, periodInMinutes });
+}
+
+async function ensureGmailIndexScanScheduled() {
+  const { googleDataConnected } = await chrome.storage.local.get("googleDataConnected");
+  if (!googleDataConnected) return;
+  const alarm = await chrome.alarms.get(GMAIL_SCAN_ALARM);
+  if (!alarm) createGmailScanAlarm(0.5);
+}
+
+async function ensureGmailConnected() {
+  const { googleDataConnected } = await chrome.storage.local.get("googleDataConnected");
+  if (!googleDataConnected) {
+    throw new Error("Connect Google access to scan the inbox.");
+  }
+}
+
+async function fetchGmailIndexPage(pageToken, accessToken) {
+  const params = new URLSearchParams({
+    q: "in:inbox",
+    maxResults: String(GMAIL_INDEX_PAGE_SIZE),
+  });
+  if (pageToken) params.set("pageToken", pageToken);
+  return googleApiRequest(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
+    accessToken
+  );
+}
+
+async function fetchGmailIndexBatch(messageIds, accessToken) {
+  const records = [];
+  for (let start = 0; start < messageIds.length; start += 5) {
+    if (gmailScanCancelled) return records;
+    const batch = messageIds.slice(start, start + 5);
+    const messages = await Promise.all(batch.map(async (id) => {
+      try {
+        return await getGmailMessage(id, accessToken, GMAIL_INDEX_BODY_LIMIT);
+      } catch (error) {
+        if (error.status === 404) return null;
+        throw error;
+      }
+    }));
+    records.push(...messages.filter((message) => message && message.labelIds.includes("INBOX")));
+  }
+  return records;
+}
+
+async function syncGmailHistory(startHistoryId, accessToken) {
+  let pageToken = null;
+  let newestHistoryId = startHistoryId;
+  const changedMessageIds = new Set();
+  const deletedMessageIds = new Set();
+  do {
+    const params = new URLSearchParams({ startHistoryId });
+    if (pageToken) params.set("pageToken", pageToken);
+    const data = await googleApiRequest(
+      `https://gmail.googleapis.com/gmail/v1/users/me/history?${params}`,
+      accessToken
+    );
+    newestHistoryId = data.historyId || newestHistoryId;
+    (data.history || []).forEach((item) => {
+      const added = item.messagesAdded || [];
+      const labelsAdded = item.labelsAdded || [];
+      const labelsRemoved = item.labelsRemoved || [];
+      added.concat(labelsAdded, labelsRemoved).forEach(({ message }) => {
+        if (message?.id) changedMessageIds.add(message.id);
+      });
+      (item.messagesDeleted || []).forEach(({ message }) => {
+        if (message?.id) deletedMessageIds.add(message.id);
+      });
+    });
+    pageToken = data.nextPageToken || null;
+  } while (pageToken && !gmailScanCancelled);
+
+  if (gmailScanCancelled) return newestHistoryId;
+  const updateIds = Array.from(changedMessageIds)
+    .filter((id) => !deletedMessageIds.has(id));
+  const updatedMessages = await fetchGmailIndexBatch(updateIds, accessToken);
+  await deleteGmailIndexMessages(Array.from(deletedMessageIds));
+  await deleteGmailIndexMessages(
+    updateIds.filter((id) => !updatedMessages.some((message) => message.id === id))
+  );
+  await writeGmailIndexMessages(updatedMessages.map(getGmailIndexRecord));
+  return newestHistoryId;
+}
+
+async function getGmailIndexSearchResults(query) {
+  try {
+    return await searchGmailLocalIndex(query);
+  } catch (error) {
+    console.warn("Exelidoc Gmail: local index search failed; using Gmail search", error.message);
+    return [];
+  }
+}
+
+async function fullGmailInboxScan(accessToken, state) {
+  if (!state.initialScanStarted) {
+    const profile = await getGmailProfile(accessToken);
+    state = {
+      ...state,
+      status: "scanning",
+      initialScanStarted: true,
+      initialHistoryId: profile.historyId,
+      nextPageToken: null,
+      lastError: null,
+    };
+    await clearGmailIndex();
+    await setGmailScanState(state);
+  }
+
+  const page = await fetchGmailIndexPage(state.nextPageToken, accessToken);
+  const ids = (page.messages || []).map((message) => message.id).filter(Boolean);
+  const records = await fetchGmailIndexBatch(ids, accessToken);
+  if (gmailScanCancelled) return state;
+  await ensureGmailConnected();
+  await writeGmailIndexMessages(records.map(getGmailIndexRecord));
+  const nextPageToken = page.nextPageToken || null;
+  const updatedState = {
+    ...state,
+    status: nextPageToken ? "scanning" : "syncing_changes",
+    nextPageToken,
+    indexedCount: await getGmailIndexCount(),
+    lastError: null,
+  };
+
+  if (nextPageToken) {
+    await setGmailScanState(updatedState);
+    createGmailScanAlarm(1);
+    return updatedState;
+  }
+
+  let historyId;
+  try {
+    historyId = await syncGmailHistory(state.initialHistoryId, accessToken);
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    const profile = await getGmailProfile(accessToken);
+    await clearGmailIndex();
+    const restartState = {
+      ...updatedState,
+      status: "scanning",
+      initialScanStarted: true,
+      initialHistoryId: profile.historyId,
+      nextPageToken: null,
+      indexedCount: 0,
+    };
+    await setGmailScanState(restartState);
+    createGmailScanAlarm(1);
+    return restartState;
+  }
+  return {
+    ...updatedState,
+    status: "ready",
+    initialScanStarted: false,
+    initialHistoryId: null,
+    historyId,
+    nextPageToken: null,
+    indexedCount: await getGmailIndexCount(),
+    lastScanAt: new Date().toISOString(),
+  };
+}
+
+async function getGmailIndexCount() {
+  const database = await openGmailIndex();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction("messages", "readonly");
+      const request = transaction.objectStore("messages").count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Could not count indexed messages."));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function performGmailInboxScan() {
+  await ensureGmailConnected();
+  const accessToken = await getGoogleAccessToken(
+    ["https://www.googleapis.com/auth/gmail.readonly"],
+    false
+  );
+  let state = await getGmailScanState();
+  state = { ...state, status: "scanning", lastError: null };
+  await setGmailScanState(state);
+
+  try {
+    if (!state.historyId || state.initialScanStarted) {
+      state = await fullGmailInboxScan(accessToken, state);
+    } else {
+      try {
+        const historyId = await syncGmailHistory(state.historyId, accessToken);
+        state = {
+          ...state,
+          historyId,
+          status: "ready",
+          lastScanAt: new Date().toISOString(),
+          indexedCount: await getGmailIndexCount(),
+          lastError: null,
+        };
+      } catch (error) {
+        if (error.status !== 404) throw error;
+        state = {
+          ...state,
+          historyId: null,
+          initialScanStarted: false,
+          nextPageToken: null,
+        };
+        state = await fullGmailInboxScan(accessToken, state);
+      }
+    }
+    if (!gmailScanCancelled) await setGmailScanState(state);
+  } catch (error) {
+    const failedState = {
+      ...state,
+      status: "error",
+      lastError: error.message || "Gmail scan failed.",
+    };
+    await setGmailScanState(failedState);
+    throw error;
+  }
+}
+
+function scanGmailInbox() {
+  if (gmailScanPromise) return gmailScanPromise;
+  gmailScanCancelled = false;
+  gmailScanPromise = performGmailInboxScan()
+    .finally(() => {
+      gmailScanPromise = null;
+      gmailScanCancelled = false;
+    });
+  return gmailScanPromise;
+}
+
+async function startGmailIndexing() {
+  await chrome.storage.local.set({
+    gmailScanState: {
+      status: "queued",
+      indexedCount: 0,
+      lastScanAt: null,
+      lastError: null,
+      initialScanStarted: false,
+      initialHistoryId: null,
+      nextPageToken: null,
+      historyId: null,
+    },
+  });
+  createGmailScanAlarm(0.5);
+  scanGmailInbox().catch((error) => {
+    console.error("Exelidoc Gmail: initial inbox scan failed", error.message);
+  });
+}
+
+async function stopGmailIndexing() {
+  gmailScanCancelled = true;
+  await chrome.alarms.clear(GMAIL_SCAN_ALARM);
+  if (gmailScanPromise) {
+    try {
+      await gmailScanPromise;
+    } catch (error) {
+      console.warn("Exelidoc Gmail: scan stopped after an error", error.message);
+    }
+  }
+  await clearGmailIndex();
+  await chrome.storage.local.remove(["gmailScanState"]);
+  return new Promise((resolve, reject) => {
+    chrome.identity.clearAllCachedAuthTokens(() => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      chrome.storage.local.remove(["googleDataConnected"], resolve);
+    });
+  });
+}
+
+async function registerGmailScanAlarm() {
+  const { googleDataConnected } = await chrome.storage.local.get("googleDataConnected");
+  if (googleDataConnected) await ensureGmailIndexScanScheduled();
+}
+
+if (chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === GMAIL_SCAN_ALARM) {
+      scanGmailInbox().catch((error) => {
+        console.error("Exelidoc Gmail: scheduled inbox scan failed", error.message);
+      });
+    }
+  });
+}
+
+chrome.runtime.onInstalled?.addListener(() => {
+  registerGmailScanAlarm().catch((error) => {
+    console.error("Exelidoc Gmail: could not restore scheduled scan", error.message);
+  });
+});
+chrome.runtime.onStartup?.addListener(() => {
+  registerGmailScanAlarm().catch((error) => {
+    console.error("Exelidoc Gmail: could not restore scheduled scan", error.message);
+  });
+});
 async function getGoogleDocSource(file, accessToken) {
   const document = await getGoogleDocument(file.id, accessToken);
   return {
@@ -211,14 +678,33 @@ async function getGoogleDocSource(file, accessToken) {
     title: file.name,
     url: file.webViewLink || `https://docs.google.com/document/d/${encodeURIComponent(file.id)}/edit`,
     content: getDocumentPlainText(document).slice(0, GOOGLE_SOURCE_CONTENT_LIMIT),
+    sourceRef: { provider: "google", kind: "google_document", id: file.id },
   };
 }
 
 async function getGooglePresentationSource(file, accessToken) {
-  const presentation = await googleApiRequest(
-    `https://slides.googleapis.com/v1/presentations/${encodeURIComponent(file.id)}?fields=title,slides(pageElements(shape(text(textElements(textRun(content)))),table(tableRows(tableCells(text(textElements(textRun(content))))))))`,
+  const presentation = await getGooglePresentation(file.id, accessToken);
+  return {
+    type: "presentation",
+    title: file.name || presentation.title || "Google Slides",
+    url: file.webViewLink || getGooglePresentationUrl(file.id),
+    content: extractGooglePresentationText(presentation).slice(0, GOOGLE_SOURCE_CONTENT_LIMIT),
+    sourceRef: { provider: "google", kind: "google_presentation", id: file.id },
+  };
+}
+
+function getGooglePresentationUrl(presentationId) {
+  return `https://docs.google.com/presentation/d/${encodeURIComponent(presentationId)}/edit`;
+}
+
+async function getGooglePresentation(presentationId, accessToken) {
+  return googleApiRequest(
+    `https://slides.googleapis.com/v1/presentations/${encodeURIComponent(presentationId)}?fields=title,slides(pageElements(shape(text(textElements(textRun(content)))),table(tableRows(tableCells(text(textElements(textRun(content))))))))`,
     accessToken
   );
+}
+
+function extractGooglePresentationText(presentation) {
   const textRuns = [];
   function collectTextRuns(value) {
     if (Array.isArray(value)) {
@@ -232,12 +718,7 @@ async function getGooglePresentationSource(file, accessToken) {
     Object.values(value).forEach(collectTextRuns);
   }
   collectTextRuns(presentation.slides || []);
-  return {
-    type: "presentation",
-    title: file.name || presentation.title || "Google Slides",
-    url: file.webViewLink || `https://docs.google.com/presentation/d/${encodeURIComponent(file.id)}/edit`,
-    content: textRuns.join("").slice(0, GOOGLE_SOURCE_CONTENT_LIMIT),
-  };
+  return textRuns.join("");
 }
 
 async function getGoogleSheetSource(file, accessToken) {
@@ -264,7 +745,45 @@ async function getGoogleSheetSource(file, accessToken) {
     content: sections.filter(Boolean).join("\n\n").slice(0, GOOGLE_SOURCE_CONTENT_LIMIT),
     spreadsheetId: file.id,
     sheetTitles: sheets.map((sheet) => sheet.properties?.title).filter(Boolean),
+    sourceRef: { provider: "google", kind: "google_spreadsheet", id: file.id },
   };
+}
+
+async function getGoogleSourceForRef(sourceRef, accessToken) {
+  if (
+    !sourceRef
+    || sourceRef.provider !== "google"
+    || !/^[A-Za-z0-9_-]{1,256}$/.test(sourceRef.id || "")
+  ) {
+    throw new Error("A saved Google source reference is invalid.");
+  }
+  if (sourceRef.kind === "gmail_message") {
+    return makeGmailSource(await getGmailMessage(sourceRef.id, accessToken));
+  }
+  if (sourceRef.kind === "google_document") {
+    const document = await getGoogleDocument(sourceRef.id, accessToken);
+    return {
+      type: "document",
+      title: document.title || "Google Docs",
+      url: `https://docs.google.com/document/d/${encodeURIComponent(sourceRef.id)}/edit`,
+      content: getDocumentPlainText(document).slice(0, GOOGLE_SOURCE_CONTENT_LIMIT),
+      sourceRef,
+    };
+  }
+  if (sourceRef.kind === "google_spreadsheet") {
+    return getGoogleSheetSource({ id: sourceRef.id }, accessToken);
+  }
+  if (sourceRef.kind === "google_presentation") {
+    const presentation = await getGooglePresentation(sourceRef.id, accessToken);
+    return {
+      type: "presentation",
+      title: presentation.title || "Google Slides",
+      url: getGooglePresentationUrl(sourceRef.id),
+      content: extractGooglePresentationText(presentation).slice(0, GOOGLE_SOURCE_CONTENT_LIMIT),
+      sourceRef,
+    };
+  }
+  throw new Error("This history entry does not contain a supported Google source.");
 }
 
 function googleColumnIndex(letters) {
@@ -526,10 +1045,20 @@ async function searchGoogleSources(query) {
     throw new Error("Enter a search query of 1 to 200 characters.");
   }
   const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
-  const [emails, files] = await Promise.all([
+  const [indexedEmails, searchedEmails, files] = await Promise.all([
+    getGmailIndexSearchResults(query.trim()),
     getGmailSearchResults(query.trim(), accessToken),
     getGoogleDriveSearchResults(query.trim(), accessToken),
   ]);
+  const seenMessageIds = new Set();
+  const emails = [...indexedEmails, ...searchedEmails]
+    .filter((source) => {
+      const id = source.sourceRef?.id;
+      if (id && seenMessageIds.has(id)) return false;
+      if (id) seenMessageIds.add(id);
+      return true;
+    })
+    .slice(0, GOOGLE_SOURCE_LIMIT);
   return [...emails, ...files]
     .filter((source) => source.content && source.content.trim())
     .slice(0, GOOGLE_SOURCE_LIMIT * 2);
@@ -604,6 +1133,7 @@ async function handleGoogleDocsAnalysis(message, sender) {
       text: originalText,
       instruction: message.instruction,
       source_url: getGoogleSourceUrl(sender),
+      source_refs: [{ provider: "google", kind: "google_document", id: documentId }],
       client: "chrome",
     }),
   });
@@ -624,6 +1154,116 @@ async function handleGoogleDocsAnalysis(message, sender) {
     correctedText,
     revisionId: document.revisionId,
   };
+}
+
+async function handleGoogleSlidesQuestion(message, sender) {
+  let senderUrl;
+  try {
+    senderUrl = new URL(sender.url || "");
+  } catch (error) {
+    throw new Error("Open a Google Slides presentation and try again.");
+  }
+  const match = senderUrl.pathname.match(/^\/presentation\/(?:u\/\d+\/)?d\/([\w-]+)/);
+  if (
+    senderUrl.hostname !== "docs.google.com"
+    || !match
+    || match[1] !== message.presentationId
+  ) {
+    throw new Error("The active Google Slides presentation could not be verified. Refresh and try again.");
+  }
+  if (typeof message.prompt !== "string" || !message.prompt.trim() || message.prompt.length > 10000) {
+    throw new Error("Enter a question of 1 to 10,000 characters.");
+  }
+  const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
+  if (!sessionToken) throw new Error("no_session");
+
+  const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
+  const presentation = await getGooglePresentation(match[1], accessToken);
+  const content = extractGooglePresentationText(presentation).slice(0, GOOGLE_SOURCE_CONTENT_LIMIT);
+  if (!content.trim()) throw new Error("No readable slide text was found in this presentation.");
+  const sourceUrl = getGooglePresentationUrl(match[1]);
+  const response = await fetch(`${BACKEND_URL}/api/ai/generate-text`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-Token": sessionToken,
+    },
+    body: JSON.stringify({
+      prompt: message.prompt,
+      context: `Presentation: ${presentation.title || "Google Slides"}\nURL: ${sourceUrl}\nSlide text:\n${content}`,
+      source_url: sourceUrl,
+      source_urls: [sourceUrl],
+      source_refs: [{ provider: "google", kind: "google_presentation", id: match[1] }],
+      client: "chrome",
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Exelidoc backend returned ${response.status}.`);
+  if (typeof data.generated !== "string") throw new Error("Exelidoc returned an invalid answer.");
+  return { ok: true, answer: data.generated };
+}
+
+async function handleHistoryFollowUp(message) {
+  if (
+    typeof message.prompt !== "string"
+    || !message.prompt.trim()
+    || message.prompt.length > 10000
+    || !Array.isArray(message.sourceRefs)
+    || !message.sourceRefs.length
+    || message.sourceRefs.length > 10
+  ) {
+    throw new Error("A follow-up question and saved Google sources are required.");
+  }
+  const sourceRefs = message.sourceRefs.filter((sourceRef) => (
+    sourceRef
+    && sourceRef.provider === "google"
+    && [
+      "gmail_message",
+      "google_document",
+      "google_spreadsheet",
+      "google_presentation",
+    ].includes(sourceRef.kind)
+    && typeof sourceRef.id === "string"
+    && /^[A-Za-z0-9_-]{1,256}$/.test(sourceRef.id)
+  ));
+  if (!sourceRefs.length) throw new Error("No supported Google source references were saved for this question.");
+
+  const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
+  if (!sessionToken) throw new Error("no_session");
+  const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
+  const sources = await Promise.all(sourceRefs.map((sourceRef) => (
+    getGoogleSourceForRef(sourceRef, accessToken)
+  )));
+  const previousPrompt = typeof message.previousPrompt === "string"
+    ? message.previousPrompt.slice(0, 10000)
+    : "";
+  const sourceContext = sources.map((source, index) => (
+    `Source ${index + 1}\nTitle: ${source.title}\nType: ${source.type}\nURL: ${source.url}\nContent:\n${source.content}`
+  )).join("\n\n---\n\n");
+  const context = [
+    previousPrompt ? `Earlier question: ${previousPrompt}` : "",
+    sourceContext,
+  ].filter(Boolean).join("\n\n").slice(0, 24000);
+  const urls = sources.map((source) => source.url);
+  const response = await fetch(`${BACKEND_URL}/api/ai/generate-text`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-Token": sessionToken,
+    },
+    body: JSON.stringify({
+      prompt: message.prompt,
+      context,
+      source_url: urls[0],
+      source_urls: urls,
+      source_refs: sourceRefs,
+      client: "chrome",
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Exelidoc backend returned ${response.status}.`);
+  if (typeof data.generated !== "string") throw new Error("Exelidoc returned an invalid answer.");
+  return { ok: true, answer: data.generated };
 }
 
 async function applyGoogleDocumentEdit(message, sender) {
@@ -686,6 +1326,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(() => new Promise((resolve) => {
         chrome.storage.local.set({ googleDataConnected: true }, resolve);
       }))
+      .then(() => startGmailIndexing())
       .then(() => sendResponse({ ok: true }))
       .catch((error) => {
         console.error("Exelidoc background: Google data authorization failed", error.message);
@@ -695,13 +1336,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "DISCONNECT_GOOGLE_DATA") {
-    chrome.identity.clearAllCachedAuthTokens(() => {
-      if (chrome.runtime.lastError) {
-        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
-        return;
-      }
-      chrome.storage.local.remove(["googleDataConnected"], () => sendResponse({ ok: true }));
+    stopGmailIndexing()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => {
+        console.error("Exelidoc background: Google disconnect failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Could not disconnect Google access." });
+      });
+    return true;
+  }
+
+  if (message.type === "GET_GMAIL_SCAN_STATUS") {
+    chrome.storage.local.get(["googleDataConnected", "gmailScanState"], (data) => {
+      sendResponse({
+        ok: true,
+        connected: Boolean(data.googleDataConnected),
+        scan: data.gmailScanState || null,
+      });
     });
+    return true;
+  }
+
+  if (message.type === "SCAN_GMAIL_NOW") {
+    scanGmailInbox()
+      .then(async () => sendResponse({ ok: true, scan: await getGmailScanState() }))
+      .catch((error) => {
+        console.error("Exelidoc background: manual Gmail scan failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Gmail scan failed." });
+      });
     return true;
   }
 
@@ -737,6 +1398,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => {
         console.error("Exelidoc background: Google Docs request failed", error.message);
         sendResponse({ ok: false, error: error.message || "Google Docs request failed." });
+      });
+    return true;
+  }
+
+  if (message.type === "ANALYZE_GOOGLE_SLIDES") {
+    handleGoogleSlidesQuestion(message, sender)
+      .then(sendResponse)
+      .catch((error) => {
+        console.error("Exelidoc background: Google Slides request failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Google Slides request failed." });
+      });
+    return true;
+  }
+
+  if (message.type === "FOLLOW_UP_HISTORY") {
+    handleHistoryFollowUp(message)
+      .then(sendResponse)
+      .catch((error) => {
+        console.error("Exelidoc background: history follow-up failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Could not answer the follow-up." });
       });
     return true;
   }
@@ -808,6 +1489,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           text: message.text,
           instruction: message.instruction,
           source_url: getGoogleSourceUrl(sender),
+          source_refs: getGmailSourceRef(sender) ? [getGmailSourceRef(sender)] : [],
           client: "chrome",
         }),
       })

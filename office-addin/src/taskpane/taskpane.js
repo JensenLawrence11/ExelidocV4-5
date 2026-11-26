@@ -21,7 +21,7 @@ Office.onReady((info) => {
       subtitle.textContent = "AI assistant for Excel";
       textMode.hidden = true;
       rangeMode.hidden = false;
-      document.getElementById("clean").addEventListener("click", onCleanRangeClicked);
+      document.getElementById("edit-excel-range").addEventListener("click", onEditExcelRangeClicked);
       break;
     case Office.HostType.Word:
       subtitle.textContent = "AI assistant for Word";
@@ -47,6 +47,7 @@ Office.onReady((info) => {
   document.getElementById("undo").addEventListener("click", onUndoClicked);
   document.getElementById("apply-edit").addEventListener("click", onApplyEditClicked);
   document.getElementById("discard-edit").addEventListener("click", discardPendingEdit);
+  document.getElementById("confirm-excel-formulas").addEventListener("change", updateExcelApplyButton);
 });
 
 function setupSettingsUI() {
@@ -146,37 +147,19 @@ function setAccountStatus(text) {
 function renderHistory(items, append = false) {
   const list = document.getElementById("history-list");
   if (!append) list.replaceChildren();
-  if (!items.length) {
-    if (!append) list.textContent = "No saved requests yet.";
+  const questions = items.filter((item) => typeof item.prompt === "string" && item.prompt.trim());
+  if (!questions.length) {
+    if (!append) list.textContent = "No saved questions yet.";
     return;
   }
 
-  items.forEach((item) => {
+  questions.forEach((item) => {
     const row = document.createElement("article");
     row.className = "history-item";
-    const metadata = document.createElement("div");
-    metadata.className = "history-meta";
-    metadata.textContent = `${item.action} · ${item.client} · ${new Date(item.created_at).toLocaleString()}`;
-    row.append(metadata);
-    const sourceUrls = Array.isArray(item.source_urls) && item.source_urls.length
-      ? item.source_urls
-      : [item.source_url];
-    sourceUrls.forEach((sourceUrl, index) => {
-      if (typeof sourceUrl !== "string") return;
-      try {
-        const source = new URL(sourceUrl);
-        if (source.protocol === "https:") {
-          const link = document.createElement("a");
-          link.href = source.href;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.textContent = sourceUrls.length > 1 ? `Open source ${index + 1}` : "Open source";
-          row.append(link);
-        }
-      } catch (error) {
-        console.warn("Exelidoc history: invalid source link", error);
-      }
-    });
+    const prompt = document.createElement("p");
+    prompt.className = "history-prompt";
+    prompt.textContent = item.prompt;
+    row.append(prompt);
     list.append(row);
   });
 
@@ -362,6 +345,8 @@ function discardPendingEdit() {
   pendingEdit = null;
   document.getElementById("edit-preview-text").value = "";
   document.getElementById("edit-preview").hidden = true;
+  document.getElementById("excel-formula-confirmation").hidden = true;
+  document.getElementById("confirm-excel-formulas").checked = false;
   setStatus("Preview discarded. The document was not changed.");
 }
 
@@ -371,6 +356,13 @@ async function onApplyEditClicked() {
     return;
   }
   const applyButton = document.getElementById("apply-edit");
+  if (pendingEdit.kind === "excel" && pendingEdit.formulaChanges > 0) {
+    if (!document.getElementById("confirm-excel-formulas").checked) {
+      setStatus("Review and confirm formula changes separately before applying.");
+      return;
+    }
+    if (!window.confirm(`Apply ${pendingEdit.formulaChanges} reviewed formula change(s)?`)) return;
+  }
   applyButton.disabled = true;
   setStatus("Checking that the source has not changed...");
 
@@ -446,7 +438,7 @@ async function onApplyEditClicked() {
   } catch (err) {
     setStatus(`Could not apply preview: ${err.message}`);
   } finally {
-    applyButton.disabled = false;
+    updateExcelApplyButton();
   }
 }
 
@@ -628,12 +620,12 @@ function powerPointSetSelectedText(text) {
 }
 
 // ---------------------------------------------------------------------------
-// Excel -- single "Clean Up" button, no instruction (backend doesn't accept
-// one for ranges yet -- see analyze_spreadsheet_range in ai_service.py).
+// Excel -- review instruction-driven cell edits before applying them.
 // ---------------------------------------------------------------------------
 
-async function onCleanRangeClicked() {
-  const cleanBtn = document.getElementById("clean");
+async function onEditExcelRangeClicked() {
+  const cleanBtn = document.getElementById("edit-excel-range");
+  const instruction = document.getElementById("excel-instruction").value.trim();
   discardPendingEdit();
   preEditSnapshot = null;
   document.getElementById("undo").hidden = true;
@@ -642,6 +634,7 @@ async function onCleanRangeClicked() {
   setNotes(null);
 
   try {
+    if (!instruction) throw new Error("Enter an instruction for the spreadsheet edit.");
     const selection = await readExcelSelection();
     const { values, formulas } = selection;
 
@@ -649,38 +642,43 @@ async function onCleanRangeClicked() {
       setStatus("No range selected.");
       return;
     }
+    const cellCount = values.reduce((total, row) => total + row.length, 0);
+    if (cellCount > 2500) {
+      throw new Error("Select no more than 2,500 cells at a time.");
+    }
 
-    setStatus("Thinking...");
-    const safeValues = values.map((row, rowIndex) => row.map((value, columnIndex) => (
-      isFormulaCell(formulas[rowIndex][columnIndex]) ? "" : value
+    setStatus("Sending the selected range and instruction to Gemini...");
+    const editValues = formulas.map((row, rowIndex) => row.map((formula, columnIndex) => (
+      isFormulaCell(formula) ? formula : values[rowIndex][columnIndex]
     )));
-    const result = await callBackend("/api/ai/analyze-range", {
-      values: safeValues,
+    const result = await callBackend("/api/ai/edit-range", {
+      values: editValues,
+      instruction,
       source_url: Office.context.document.url || null,
     });
 
-    if (!result.correctedValues) {
-      setStatus("No changes suggested.");
-      return;
+    if (!Array.isArray(result.correctedValues)
+      || result.correctedValues.length !== values.length
+      || result.correctedValues.some((row, index) => !Array.isArray(row) || row.length !== values[index].length)) {
+      throw new Error("The AI returned an invalid cell preview. Nothing was changed.");
     }
-
-    const correctedFormulas = formulas.map((row) => row.slice());
+    const correctedFormulas = result.correctedValues.map((row) => row.slice());
+    let formulaChanges = 0;
     for (let rowIndex = 0; rowIndex < values.length; rowIndex += 1) {
       for (let columnIndex = 0; columnIndex < values[rowIndex].length; columnIndex += 1) {
-        const currentValue = values[rowIndex][columnIndex];
-        if (!isFormulaCell(formulas[rowIndex][columnIndex])
-          && typeof currentValue === "string"
-          && currentValue.trim()) {
-          const proposedValue = result.correctedValues[rowIndex][columnIndex];
-          if (typeof proposedValue !== "string" || proposedValue.trim().startsWith("=")) {
-            throw new Error("A proposed cell value looked like a formula, so the range was not changed.");
-          }
-          correctedFormulas[rowIndex][columnIndex] = proposedValue;
+        const oldFormula = formulas[rowIndex][columnIndex];
+        const proposedValue = correctedFormulas[rowIndex][columnIndex];
+        if (isFormulaCell(oldFormula) && proposedValue !== oldFormula) {
+          formulaChanges += 1;
+        } else if (!isFormulaCell(oldFormula)
+          && typeof proposedValue === "string"
+          && proposedValue.trimStart().startsWith("=")) {
+          formulaChanges += 1;
         }
       }
     }
 
-    if (JSON.stringify(correctedFormulas) === JSON.stringify(formulas)) {
+    if (JSON.stringify(correctedFormulas) === JSON.stringify(editValues)) {
       setStatus("No changes suggested.");
       return;
     }
@@ -691,17 +689,64 @@ async function onCleanRangeClicked() {
       values,
       formulas,
       correctedFormulas,
+      formulaChanges,
     };
     showEditPreview(
-      JSON.stringify(correctedFormulas, null, 2),
-      "Formula cells and numbers are preserved. Review the proposed range; it has not been changed."
+      formatExcelCellChanges(selection.address, editValues, correctedFormulas),
+      formulaChanges
+        ? `Review the cell changes. ${formulaChanges} formula change(s) require separate confirmation. Nothing has been changed.`
+        : "Review the cell changes. Nothing has been changed."
     );
+    document.getElementById("excel-formula-confirmation").hidden = formulaChanges === 0;
+    document.getElementById("confirm-excel-formulas").checked = false;
+    updateExcelApplyButton();
     setNotes(result.notes);
   } catch (err) {
     setStatus(`Error: ${err.message}`);
   } finally {
     cleanBtn.disabled = false;
   }
+}
+
+function updateExcelApplyButton() {
+  const hasFormulaChanges = pendingEdit?.kind === "excel" && pendingEdit.formulaChanges > 0;
+  document.getElementById("apply-edit").disabled = Boolean(
+    hasFormulaChanges && !document.getElementById("confirm-excel-formulas").checked
+  );
+}
+
+function formatExcelCellChanges(address, before, after) {
+  const match = String(address).match(/\$?([A-Z]+)\$?(\d+)(?::\$?([A-Z]+)\$?(\d+))?$/i);
+  const startColumn = match ? excelColumnNumber(match[1]) : 1;
+  const startRow = match ? Number(match[2]) : 1;
+  const lines = [];
+  for (let rowIndex = 0; rowIndex < after.length; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < after[rowIndex].length; columnIndex += 1) {
+      if (JSON.stringify(before[rowIndex][columnIndex]) === JSON.stringify(after[rowIndex][columnIndex])) continue;
+      const cell = `${excelColumnLetters(startColumn + columnIndex)}${startRow + rowIndex}`;
+      const oldValue = before[rowIndex][columnIndex] == null ? "(blank)" : String(before[rowIndex][columnIndex]);
+      const newValue = after[rowIndex][columnIndex] == null ? "(blank)" : String(after[rowIndex][columnIndex]);
+      lines.push(`${cell}: ${oldValue} -> ${newValue}`);
+    }
+  }
+  return lines.join("\n") || "No cell changes proposed.";
+}
+
+function excelColumnNumber(letters) {
+  return letters.toUpperCase().split("").reduce((number, letter) => (
+    number * 26 + letter.charCodeAt(0) - 64
+  ), 0);
+}
+
+function excelColumnLetters(number) {
+  let column = number;
+  let letters = "";
+  while (column > 0) {
+    column -= 1;
+    letters = String.fromCharCode(65 + (column % 26)) + letters;
+    column = Math.floor(column / 26);
+  }
+  return letters;
 }
 
 async function readExcelSelection() {

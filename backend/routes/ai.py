@@ -29,6 +29,8 @@ def _save_history(action):
             action,
             data.get("source_url"),
             data.get("source_urls"),
+            data.get("prompt") if isinstance(data.get("prompt"), str) else data.get("instruction"),
+            data.get("source_refs"),
         )
     except Exception as e:
         print(f"{action}: save_conversation failed -- {e}")

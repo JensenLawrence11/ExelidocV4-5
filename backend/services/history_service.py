@@ -1,4 +1,5 @@
-"""Persistence for metadata-only AI usage history."""
+"""Persistence for user questions and safe source references, without AI content."""
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 from services.supabase_client import get_supabase
@@ -16,6 +17,47 @@ ALLOWED_SOURCE_HOSTS = {
     "word.office.com",
     "powerpoint.office.com",
 }
+ALLOWED_SOURCE_REF_KINDS = {
+    "gmail_message",
+    "google_document",
+    "google_spreadsheet",
+    "google_presentation",
+}
+MAX_HISTORY_PROMPT_CHARS = 10000
+
+
+def sanitize_history_prompt(value: str | None) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.replace("\x00", "").strip()[:MAX_HISTORY_PROMPT_CHARS]
+
+
+def sanitize_source_refs(source_refs: list[dict] | None) -> list[dict]:
+    if not isinstance(source_refs, list):
+        return []
+
+    safe_refs = []
+    seen = set()
+    for source_ref in source_refs[:10]:
+        if not isinstance(source_ref, dict):
+            continue
+        provider = source_ref.get("provider")
+        kind = source_ref.get("kind")
+        identifier = source_ref.get("id")
+        if (
+            provider != "google"
+            or not isinstance(kind, str)
+            or kind not in ALLOWED_SOURCE_REF_KINDS
+            or not isinstance(identifier, str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", identifier)
+        ):
+            continue
+        key = (kind, identifier)
+        if key in seen:
+            continue
+        seen.add(key)
+        safe_refs.append({"provider": provider, "kind": kind, "id": identifier})
+    return safe_refs
 
 
 def sanitize_source_url(value: str | None) -> str | None:
@@ -46,6 +88,8 @@ def save_conversation(
     action: str,
     source_url: str | None = None,
     source_urls: list[str] | None = None,
+    prompt: str | None = None,
+    source_refs: list[dict] | None = None,
 ) -> None:
     safe_client = client if isinstance(client, str) and client in {"chrome", "office"} else "unknown"
     safe_source_url = sanitize_source_url(source_url)
@@ -65,10 +109,11 @@ def save_conversation(
         "user_id": user_id,
         "client": safe_client,
         "action": action,
-        "prompt": "",
+        "prompt": sanitize_history_prompt(prompt),
         "response": {},
         "source_url": safe_source_url or (safe_source_urls[0] if safe_source_urls else None),
         "source_urls": safe_source_urls,
+        "source_refs": sanitize_source_refs(source_refs),
     }).execute()
 
 
@@ -76,13 +121,20 @@ def list_conversations(user_id: str, limit: int = 30, offset: int = 0) -> list[d
     result = (
         get_supabase()
         .table("ai_conversation_history")
-        .select("id,client,action,source_url,source_urls,created_at")
+        .select("id,client,action,prompt,source_url,source_urls,source_refs,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .range(offset, offset + limit - 1)
         .execute()
     )
-    return result.data
+    return [
+        {
+            **item,
+            "prompt": sanitize_history_prompt(item.get("prompt")),
+            "source_refs": sanitize_source_refs(item.get("source_refs")),
+        }
+        for item in result.data
+    ]
 
 
 def delete_conversations(user_id: str) -> None:

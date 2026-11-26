@@ -246,6 +246,26 @@
   padding: 8px 0;
 }
 
+.exelidoc-history-item textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  margin: 6px 0;
+  resize: vertical;
+}
+
+.exelidoc-history-answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.exelidoc-slides-answer {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .exelidoc-history-mention {
   display: flex;
   align-items: center;

@@ -51,9 +51,12 @@
     <section id="sources-section" hidden>
       <h2>Search Google sources</h2>
       <p class="plans-note">Search happens only when you ask. Review and select email, Docs, Sheets, or Slides results before sending their contents to Gemini.</p>
-      <button id="connect-google-btn" type="button">Connect Google email, Docs, and Sheets</button>
+      <button id="connect-google-btn" type="button">Connect Google email, Docs, Sheets, and Slides</button>
       <button id="disconnect-google-btn" class="secondary-btn" type="button" hidden>Disconnect Google access</button>
       <p id="google-status" class="plans-note" role="status" aria-live="polite"></p>
+      <p class="account-note">While Chrome is running, Exelidoc indexes your inbox every 15 minutes. Message text stays in this Chrome profile and is sent to Gemini only when you ask. Disconnecting Google clears the local index.</p>
+      <button id="scan-gmail-now-btn" class="secondary-btn" type="button" hidden>Scan inbox now</button>
+      <p id="gmail-scan-status" class="plans-note" role="status" aria-live="polite"></p>
       <label for="google-search-input">Search query</label>
       <input id="google-search-input" type="search" maxlength="200" placeholder="Search email, Docs, Sheets, and Slides" />
       <button id="google-search-btn" type="button">Search connected sources</button>
@@ -93,7 +96,7 @@
         <h2>Recent history</h2>
         <button id="refresh-history-btn" type="button" aria-label="Refresh history" title="Refresh history">↻</button>
       </div>
-      <p class="plans-note">Only action metadata, timestamps, and safe source links are saved. AI prompts and replies are not kept in Exelidoc history.</p>
+      <p class="plans-note">History shows only your questions. Safe source references are kept for follow-ups; source content and Gemini replies are not saved.</p>
       <div id="history-list" aria-live="polite"></div>
       <button id="load-more-history-btn" class="secondary-btn" type="button" hidden>Load older</button>
       <button id="clear-history-btn" class="secondary-btn" type="button">Clear history</button>

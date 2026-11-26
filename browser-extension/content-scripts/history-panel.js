@@ -25,39 +25,55 @@
 
     function render(items, append) {
       if (!append) list.replaceChildren();
-      if (!items.length && !append) {
-        list.textContent = "No saved requests yet.";
+      const questions = items.filter((item) => typeof item.prompt === "string" && item.prompt.trim());
+      if (!questions.length && !append) {
+        list.textContent = "No saved questions yet.";
         return;
       }
 
-      items.forEach((item) => {
+      questions.forEach((item) => {
         const row = document.createElement("article");
         row.className = "exelidoc-history-item";
-        const metadata = document.createElement("div");
-        metadata.className = "exelidoc-history-meta";
-        metadata.textContent = `${item.action} · ${item.client} · ${new Date(item.created_at).toLocaleString()}`;
+        const prompt = document.createElement("p");
+        prompt.className = "exelidoc-history-prompt";
+        prompt.textContent = item.prompt;
+        row.append(prompt);
 
-        row.append(metadata);
-
-        const sourceUrls = Array.isArray(item.source_urls) && item.source_urls.length
-          ? item.source_urls
-          : [item.source_url];
-        sourceUrls.forEach((sourceUrl, index) => {
-          if (typeof sourceUrl !== "string") return;
-          try {
-            const source = new URL(sourceUrl);
-            if (source.protocol === "https:") {
-              const link = document.createElement("a");
-              link.href = source.href;
-              link.target = "_blank";
-              link.rel = "noopener noreferrer";
-              link.textContent = sourceUrls.length > 1 ? `Open source ${index + 1}` : "Open source";
-              row.append(link);
+        if (Array.isArray(item.source_refs) && item.source_refs.length) {
+          const form = document.createElement("form");
+          const input = document.createElement("textarea");
+          input.maxLength = 10000;
+          input.required = true;
+          input.placeholder = "Ask a follow-up about these sources";
+          const submit = document.createElement("button");
+          submit.type = "submit";
+          submit.textContent = "Ask follow-up";
+          const answer = document.createElement("div");
+          answer.className = "exelidoc-history-answer";
+          form.append(input, submit, answer);
+          form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const question = input.value.trim();
+            if (!question) return;
+            submit.disabled = true;
+            answer.textContent = "Re-reading the selected sources...";
+            try {
+              const result = await sendMessage({
+                type: "FOLLOW_UP_HISTORY",
+                prompt: question,
+                previousPrompt: item.prompt,
+                sourceRefs: item.source_refs,
+              });
+              if (!result.ok) throw new Error(result.error || "Could not answer the follow-up.");
+              answer.textContent = result.answer || "Exelidoc returned no answer.";
+            } catch (error) {
+              answer.textContent = error.message;
+            } finally {
+              submit.disabled = false;
             }
-          } catch (error) {
-            console.warn("Exelidoc history: invalid source link", error);
-          }
-        });
+          });
+          row.append(form);
+        }
         list.appendChild(row);
       });
     }

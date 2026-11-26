@@ -25,7 +25,7 @@
       "https://www.googleapis.com/auth/spreadsheets"
     ]
   },
-  "permissions": ["storage", "identity"],
+  "permissions": ["storage", "identity", "alarms"],
   "host_permissions": [
     "https://exelidocv4-5.onrender.com/*",
     "https://docs.googleapis.com/*",
@@ -44,6 +44,12 @@
     {
       "matches": ["https://docs.google.com/document/*"],
       "js": ["content-scripts/history-panel.js", "content-scripts/gdocs.js"],
+      "css": ["content-scripts/exelidoc-panel.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://docs.google.com/presentation/*"],
+      "js": ["content-scripts/history-panel.js", "content-scripts/slides.js"],
       "css": ["content-scripts/exelidoc-panel.css"],
       "run_at": "document_idle"
     }

@@ -35,37 +35,97 @@ async function sessionFetch(path, options = {}) {
   });
 }
 
-function renderHistory(items, append = false) {
-  if (!append) historyList.replaceChildren();
-  if (!items.length) {
-    if (!append) historyList.textContent = "No saved requests yet.";
+function renderGmailScanStatus(connected, scan) {
+  const scanButton = document.getElementById("scan-gmail-now-btn");
+  scanButton.hidden = !connected;
+  if (!connected) {
+    document.getElementById("gmail-scan-status").textContent = "";
+    return;
+  }
+  if (!scan) {
+    document.getElementById("gmail-scan-status").textContent = "The local inbox index is starting.";
     return;
   }
 
-  items.forEach((item) => {
+  const count = Number(scan.indexedCount) || 0;
+  const timestamp = scan.lastScanAt
+    ? new Date(scan.lastScanAt).toLocaleString()
+    : "";
+  const statusText = {
+    queued: "Inbox scan queued.",
+    scanning: `Indexing your inbox locally: ${count} message(s) indexed so far.`,
+    syncing_changes: `Updating the local index: ${count} message(s) indexed.`,
+    ready: `${count} inbox message(s) indexed. Last scan: ${timestamp || "just now"}.`,
+    error: `Inbox scan stopped: ${scan.lastError || "Unknown error."}`,
+  }[scan.status] || "Inbox scan has not started yet.";
+  document.getElementById("gmail-scan-status").textContent = statusText;
+}
+
+async function refreshGmailScanStatus() {
+  try {
+    const result = await sendRuntimeMessage({ type: "GET_GMAIL_SCAN_STATUS" });
+    document.getElementById("connect-google-btn").hidden = result.connected;
+    document.getElementById("disconnect-google-btn").hidden = !result.connected;
+    document.getElementById("google-status").textContent = result.connected
+      ? "Google sources are connected for this Chrome profile."
+      : "Connect an account to search its email, Docs, Sheets, and Slides.";
+    renderGmailScanStatus(result.connected, result.scan);
+  } catch (error) {
+    document.getElementById("gmail-scan-status").textContent = error.message;
+  }
+}
+
+function renderHistory(items, append = false) {
+  if (!append) historyList.replaceChildren();
+  const questions = items.filter((item) => typeof item.prompt === "string" && item.prompt.trim());
+  if (!questions.length) {
+    if (!append) historyList.textContent = "No saved questions yet.";
+    return;
+  }
+
+  questions.forEach((item) => {
     const row = document.createElement("article");
-    const metadata = document.createElement("p");
-    metadata.textContent = `${item.action} · ${item.client} · ${new Date(item.created_at).toLocaleString()}`;
-    row.append(metadata);
-    const sourceUrls = Array.isArray(item.source_urls) && item.source_urls.length
-      ? item.source_urls
-      : [item.source_url];
-    sourceUrls.forEach((sourceUrl, index) => {
-      if (typeof sourceUrl !== "string") return;
-      try {
-        const source = new URL(sourceUrl);
-        if (source.protocol === "https:") {
-          const link = document.createElement("a");
-          link.href = source.href;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.textContent = sourceUrls.length > 1 ? `Open source ${index + 1}` : "Open source";
-          row.append(link);
+    row.className = "history-item";
+    const prompt = document.createElement("p");
+    prompt.className = "history-prompt";
+    prompt.textContent = item.prompt;
+    row.append(prompt);
+
+    if (Array.isArray(item.source_refs) && item.source_refs.length) {
+      const form = document.createElement("form");
+      const input = document.createElement("textarea");
+      input.maxLength = 10000;
+      input.required = true;
+      input.placeholder = "Ask a follow-up about these sources";
+      const submit = document.createElement("button");
+      submit.type = "submit";
+      submit.textContent = "Ask follow-up";
+      const answer = document.createElement("p");
+      form.append(input, submit, answer);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const question = input.value.trim();
+        if (!question) return;
+        submit.disabled = true;
+        answer.textContent = "Re-reading the selected sources...";
+        try {
+          const result = await sendRuntimeMessage({
+            type: "FOLLOW_UP_HISTORY",
+            prompt: question,
+            previousPrompt: item.prompt,
+            sourceRefs: item.source_refs,
+          });
+          if (!result.ok) throw new Error(result.error || "Could not answer the follow-up.");
+          answer.textContent = result.answer || "Exelidoc returned no answer.";
+        } catch (error) {
+          answer.textContent = error.message;
+        } finally {
+          submit.disabled = false;
         }
-      } catch (error) {
-        console.warn("Exelidoc history: invalid source link", error);
-      }
-    });
+      });
+      row.append(form);
+    }
+
     historyList.append(row);
   });
 }
@@ -100,15 +160,6 @@ function renderGoogleResults(items) {
     return;
   }
 
-  if (item.type === "spreadsheet" && item.spreadsheetId && item.sheetTitles?.length) {
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.className = "google-sheet-edit-btn";
-    editButton.textContent = "Edit cells with AI preview";
-    editButton.addEventListener("click", () => selectGoogleSheet(item));
-    row.append(editButton);
-  }
-
   items.forEach((item, index) => {
     const row = document.createElement("article");
     row.className = "google-result";
@@ -123,6 +174,15 @@ function renderGoogleResults(items) {
     labelText.textContent = `Include ${item.type}: ${item.title}`;
     checkboxLabel.append(checkbox, labelText);
     row.append(checkboxLabel);
+
+    if (item.type === "spreadsheet" && item.spreadsheetId && item.sheetTitles?.length) {
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "google-sheet-edit-btn";
+      editButton.textContent = "Edit cells with AI preview";
+      editButton.addEventListener("click", () => selectGoogleSheet(item));
+      row.append(editButton);
+    }
 
     try {
       const source = new URL(item.url);
@@ -350,12 +410,14 @@ chrome.storage.local.get(["sessionToken", "accountEmail"], (result) => {
   }
 });
 
-chrome.storage.local.get(["googleDataConnected"], ({ googleDataConnected }) => {
-  document.getElementById("connect-google-btn").hidden = Boolean(googleDataConnected);
-  document.getElementById("disconnect-google-btn").hidden = !googleDataConnected;
-  document.getElementById("google-status").textContent = googleDataConnected
-    ? "Google sources are connected for this Chrome profile."
-    : "Connect an account to search its email, Docs, and Sheets.";
+refreshGmailScanStatus();
+chrome.storage.onChanged?.addListener((changes, areaName) => {
+  if (
+    areaName === "local"
+    && (changes.googleDataConnected || changes.gmailScanState)
+  ) {
+    refreshGmailScanStatus();
+  }
 });
 
 document.getElementById("connect-google-btn").addEventListener("click", async (event) => {
@@ -365,9 +427,8 @@ document.getElementById("connect-google-btn").addEventListener("click", async (e
   googleStatus.textContent = "Waiting for Google authorization...";
   try {
     await sendRuntimeMessage({ type: "CONNECT_GOOGLE_DATA" });
-    button.hidden = true;
-    document.getElementById("disconnect-google-btn").hidden = false;
-    googleStatus.textContent = "Google sources connected for this Chrome profile.";
+    await refreshGmailScanStatus();
+    googleStatus.textContent = "Google connected. The local inbox scan has started.";
   } catch (error) {
     googleStatus.textContent = error.message;
   } finally {
@@ -381,8 +442,7 @@ document.getElementById("disconnect-google-btn").addEventListener("click", async
   button.disabled = true;
   try {
     await sendRuntimeMessage({ type: "DISCONNECT_GOOGLE_DATA" });
-    button.hidden = true;
-    document.getElementById("connect-google-btn").hidden = false;
+    await refreshGmailScanStatus();
     googleSearchResults = [];
     currentGoogleSheet = null;
     googleSheetSnapshot = null;
@@ -391,7 +451,7 @@ document.getElementById("disconnect-google-btn").addEventListener("click", async
     document.getElementById("google-sheet-editor").hidden = true;
     document.getElementById("source-answer").textContent = "";
     updateAskSourcesButton();
-    googleStatus.textContent = "Google tokens were cleared from this extension. Remove Exelidoc from your Google account permissions to revoke the grant completely.";
+    googleStatus.textContent = "Google access was disconnected and the local inbox index was cleared. Remove Exelidoc from your Google account permissions to revoke the grant completely.";
   } catch (error) {
     googleStatus.textContent = error.message;
   } finally {
@@ -530,6 +590,20 @@ document.getElementById("google-search-btn").addEventListener("click", async (ev
   }
 });
 
+document.getElementById("scan-gmail-now-btn").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  document.getElementById("gmail-scan-status").textContent = "Scanning the inbox...";
+  try {
+    const result = await sendRuntimeMessage({ type: "SCAN_GMAIL_NOW" });
+    renderGmailScanStatus(true, result.scan);
+  } catch (error) {
+    document.getElementById("gmail-scan-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.getElementById("source-question-input").addEventListener("input", updateAskSourcesButton);
 
 document.getElementById("ask-sources-btn").addEventListener("click", async (event) => {
@@ -554,13 +628,14 @@ document.getElementById("ask-sources-btn").addEventListener("click", async (even
         context,
         source_url: selectedSources[0].url,
         source_urls: selectedSources.map((source) => source.url),
+        source_refs: selectedSources.map((source) => source.sourceRef).filter(Boolean),
         client: "chrome",
       }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Gemini could not answer this question.");
     document.getElementById("source-answer").textContent = data.generated || "Gemini returned no answer.";
-    googleStatus.textContent = "Done. The source content was used for this answer and was not saved in Exelidoc history.";
+    googleStatus.textContent = "Done. The question and safe source references are saved; source content and the answer are not.";
     loadHistory();
   } catch (error) {
     googleStatus.textContent = error.message;

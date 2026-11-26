@@ -36,13 +36,19 @@
     </div>
 
     <div id="range-mode" hidden>
-      <div class="exelidoc-hint">Select a range of cells, then click Clean Up. Formula cells and numbers are preserved; only text cells are proposed for correction.</div>
-      <button id="clean">Clean Up Selected Range</button>
+      <label for="excel-instruction">What would you like to change?</label>
+      <textarea id="excel-instruction" maxlength="10000" placeholder="e.g. Rename the headers, correct the Q2 forecast, or update the formulas in column D"></textarea>
+      <div class="exelidoc-hint">Select a range, describe the changes, and review the cell-by-cell preview. Nothing changes until you approve it. Formula changes need a separate confirmation.</div>
+      <button id="edit-excel-range" type="button">Generate edit preview</button>
     </div>
 
     <section id="edit-preview" hidden>
       <label id="edit-preview-label" for="edit-preview-text">Proposed changes</label>
       <textarea id="edit-preview-text" readonly></textarea>
+      <label id="excel-formula-confirmation" hidden>
+        <input id="confirm-excel-formulas" type="checkbox" />
+        I reviewed and approve the formula changes shown above.
+      </label>
       <div class="exelidoc-preview-actions">
         <button id="apply-edit" type="button">Apply reviewed changes</button>
         <button id="discard-edit" class="secondary-button" type="button">Discard</button>
@@ -57,7 +63,7 @@
       <summary>History</summary>
       <div class="history-content">
         <div class="history-heading">
-          <span class="exelidoc-hint">Only action metadata, timestamps, and safe source links are saved.</span>
+          <span class="exelidoc-hint">History shows only your questions. Source content and AI replies are not saved.</span>
           <button id="refresh-history-btn" type="button" title="Refresh history" aria-label="Refresh history">↻</button>
         </div>
         <div id="history-list" aria-live="polite"></div>

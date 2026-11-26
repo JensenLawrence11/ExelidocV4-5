@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const manifest = require("../manifest.json");
 const { TextDecoder } = require("node:util");
 
 const backgroundSource = fs.readFileSync(
@@ -26,7 +27,11 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
     },
     storage: {
       local: {
-        get: (_keys, callback) => callback({ googleDataConnected: true }),
+        get: (_keys, callback) => {
+          const value = { googleDataConnected: true, sessionToken: "test-session" };
+          if (callback) callback(value);
+          return Promise.resolve(value);
+        },
       },
     },
     identity: {
@@ -132,6 +137,9 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
     if (pathname.endsWith("/spreadsheets/sheet-1:batchUpdate")) {
       return jsonResponse({ spreadsheetId: "sheet-1" });
     }
+    if (url.endsWith("/api/ai/generate-text")) {
+      return jsonResponse({ generated: "This presentation is about the budget." });
+    }
     throw new Error(`Unexpected request: ${url}`);
   };
 
@@ -155,9 +163,9 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
 
   return {
     requests,
-    send(message) {
+    send(message, sender = {}) {
       return new Promise((resolve) => {
-        assert.equal(onMessage(message, {}, resolve), true);
+        assert.equal(onMessage(message, sender, resolve), true);
       });
     },
   };
@@ -189,11 +197,72 @@ test("on-demand Google search reads email, Docs, and Sheets without storing toke
   assert.match(response.items[1].content, /Budget document details/);
   assert.match(response.items[2].content, /Q1\t120/);
   assert.match(response.items[3].content, /Slide summary/);
+  assert.equal(JSON.stringify(response.items[0].sourceRef), JSON.stringify({
+    provider: "google",
+    kind: "gmail_message",
+    id: "message-1",
+  }));
+  assert.equal(JSON.stringify(response.items[3].sourceRef), JSON.stringify({
+    provider: "google",
+    kind: "google_presentation",
+    id: "slide-1",
+  }));
   assert.deepEqual(Array.from(response.items[2].sheetTitles), ["Plan"]);
   assert.ok(harness.requests.every(({ options }) => (
     options.headers.Authorization === "Bearer google-token"
   )));
   assert.ok(harness.requests.every(({ url }) => !url.includes("api-key")));
+});
+
+test("Google Slides questions send text only after an explicit request and retain source IDs", async () => {
+  const harness = createHarness();
+  const response = await harness.send({
+    type: "ANALYZE_GOOGLE_SLIDES",
+    presentationId: "slide-1",
+    prompt: "What is the presentation about?",
+  }, {
+    url: "https://docs.google.com/presentation/d/slide-1/edit",
+  });
+
+  assert.equal(response.ok, true);
+  assert.match(response.answer, /budget/);
+  const request = harness.requests.find(({ url }) => url.endsWith("/api/ai/generate-text"));
+  const body = JSON.parse(request.options.body);
+  assert.match(body.context, /Slide summary/);
+  assert.deepEqual(body.source_refs, [{
+    provider: "google",
+    kind: "google_presentation",
+    id: "slide-1",
+  }]);
+});
+
+test("history follow-up re-fetches source content only after the user asks", async () => {
+  const harness = createHarness();
+  const response = await harness.send({
+    type: "FOLLOW_UP_HISTORY",
+    prompt: "What was the email asking for?",
+    previousPrompt: "Summarize this email",
+    sourceRefs: [{ provider: "google", kind: "gmail_message", id: "message-1" }],
+  });
+
+  assert.equal(response.ok, true);
+  const request = harness.requests.find(({ url }) => url.endsWith("/api/ai/generate-text"));
+  const body = JSON.parse(request.options.body);
+  assert.match(body.context, /Budget review email body/);
+  assert.match(body.context, /Earlier question: Summarize this email/);
+  assert.deepEqual(body.source_refs, [{
+    provider: "google",
+    kind: "gmail_message",
+    id: "message-1",
+  }]);
+});
+
+test("manifest schedules Gmail indexing and injects Exelidoc in Slides", () => {
+  assert.ok(manifest.permissions.includes("alarms"));
+  assert.ok(manifest.content_scripts.some(({ matches, js }) => (
+    matches.includes("https://docs.google.com/presentation/*")
+    && js.includes("content-scripts/slides.js")
+  )));
 });
 
 test("Google Sheets edits recheck source values and formulas need separate confirmation", async () => {

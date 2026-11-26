@@ -62,6 +62,7 @@ def test_successful_ai_request_is_saved_to_account_history():
                 "client": "chrome",
                 "source_url": "https://docs.google.com/document/d/doc-1/edit?private=query",
                 "context": "Selected reference text",
+                "source_refs": [{"provider": "google", "kind": "google_document", "id": "doc-1"}],
             },
             headers={"X-Session-Token": "session-1"},
         )
@@ -72,16 +73,24 @@ def test_successful_ai_request_is_saved_to_account_history():
         "user-1", "chrome", "generate-text",
         "https://docs.google.com/document/d/doc-1/edit?private=query",
         None,
+        "Draft a reply",
+        [{"provider": "google", "kind": "google_document", "id": "doc-1"}],
     )
 
 
-def test_history_insert_contains_only_metadata():
+def test_history_insert_contains_question_and_safe_source_references_only():
     with patch("services.history_service.get_supabase") as get_supabase:
         save_conversation(
             "user-1",
             "chrome",
             "analyze-text",
             "https://mail.google.com/mail/u/0/#inbox?search=private",
+            prompt="Summarize this email",
+            source_refs=[
+                {"provider": "google", "kind": "gmail_message", "id": "message_1"},
+                {"provider": "microsoft", "kind": "gmail_message", "id": "unsafe"},
+                {"provider": "google", "kind": "google_document", "id": "bad/id"},
+            ],
         )
 
     inserted = get_supabase.return_value.table.return_value.insert.call_args.args[0]
@@ -89,21 +98,22 @@ def test_history_insert_contains_only_metadata():
         "user_id": "user-1",
         "client": "chrome",
         "action": "analyze-text",
-        "prompt": "",
+        "prompt": "Summarize this email",
         "response": {},
         "source_url": "https://mail.google.com/mail/u/0/",
         "source_urls": ["https://mail.google.com/mail/u/0/"],
+        "source_refs": [{"provider": "google", "kind": "gmail_message", "id": "message_1"}],
     }
 
 
-def test_history_listing_requests_no_prompt_or_response_fields():
+def test_history_listing_returns_questions_and_source_refs_but_not_responses():
     with patch("services.history_service.get_supabase") as get_supabase:
         query = get_supabase.return_value.table.return_value.select.return_value
         query.eq.return_value.order.return_value.range.return_value.execute.return_value.data = []
         assert list_conversations("user-1") == []
 
     get_supabase.return_value.table.return_value.select.assert_called_once_with(
-        "id,client,action,source_url,source_urls,created_at"
+        "id,client,action,prompt,source_url,source_urls,source_refs,created_at"
     )
 
 
@@ -135,6 +145,20 @@ def test_history_stores_only_sanitized_selected_source_links():
     ]
 
 
+def test_history_prompt_is_trimmed_and_capped():
+    with patch("services.history_service.get_supabase") as get_supabase:
+        save_conversation(
+            "user-1",
+            "chrome",
+            "generate-text",
+            prompt=f"  {'q' * 10001}  ",
+        )
+
+    inserted = get_supabase.return_value.table.return_value.insert.call_args.args[0]
+    assert len(inserted["prompt"]) == 10000
+    assert inserted["prompt"] == "q" * 10000
+
+
 def test_ai_route_rejects_oversized_source_context_before_provider_call():
     app = create_app()
 
@@ -154,7 +178,7 @@ def test_ai_route_rejects_oversized_source_context_before_provider_call():
     generate.assert_not_called()
 
 
-def test_google_sheet_edit_route_returns_preview_and_saves_source_metadata_only():
+def test_google_sheet_edit_route_returns_preview_and_saves_question():
     app = create_app()
     values = [["Old label", "=SUM(B1:B2)"]]
 
@@ -189,4 +213,6 @@ def test_google_sheet_edit_route_returns_preview_and_saves_source_metadata_only(
         "edit-range",
         "https://docs.google.com/spreadsheets/d/sheet-1/edit",
         ["https://docs.google.com/spreadsheets/d/sheet-1/edit"],
+        "Rename the label",
+        None,
     )

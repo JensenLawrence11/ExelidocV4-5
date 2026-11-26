@@ -107,8 +107,12 @@ OAuth client. Configure the OAuth consent screen and complete Google's required
 verification before publishing the Gmail, Drive, and spreadsheet permissions.
 The user connects a Google account in the extension. Searching is initiated
 only when requested, and source contents are sent to Gemini only for results
-the user selects. Selected source links and action metadata may be saved, but
-not the prompts, source text, or AI responses.
+the user selects. The extension also indexes all inbox messages locally every
+15 minutes while Chrome is running (up to 20,000 body characters per message);
+email contents stay in the local Chrome profile and are sent to Gemini only
+after the user asks. Disconnecting Google clears the local index. History
+displays the user's question and stores safe Google source IDs for explicit
+follow-ups; source contents and AI responses are not retained.
 
 Google Docs edits use a reviewed full-text replacement and reject documents
 containing unsupported tables or embedded objects. Google Sheets edits require
@@ -167,11 +171,13 @@ $10 USD calendar-month spend ceiling using Supabase; run
 The cap applies to requests through this backend only. Keep the Gemini key
 restricted to the Gemini API and do not reuse it elsewhere.
 
-Exelidoc history stores action metadata, timestamps, and validated source links
-only; it does not retain prompts or AI responses. Before deploying that behavior,
-run `backend/supabase/migration_history_metadata_only.sql` in Supabase. It clears
-previously saved prompt/response content and adds a database constraint to prevent
-future content from being stored in those history fields.
+Exelidoc history displays the user's question and stores validated source
+references; it never stores source content or AI responses. Before deploying
+that behavior, run `backend/supabase/migration_history_metadata_only.sql` and
+then `backend/supabase/migration_history_questions_and_refs.sql` in Supabase.
+The first migration clears previously saved prompts/responses; the second
+allows capped user questions and structured Google source references while
+continuing to enforce empty AI responses.
 
 ### Stripe paid plans
 
