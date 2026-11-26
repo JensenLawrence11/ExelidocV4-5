@@ -26,9 +26,30 @@ function sendRuntimeMessage(message) {
 
 function permissionMessage(error) {
   if (/authorization|permission|scope|403|not authorized/i.test(error.message)) {
-    return `${error.message}\nOpen the Exelidoc toolbar popup and click "Update Google permissions". Confirm that Google Sheets API is enabled in the OAuth project's Google Cloud console.`;
+    return `${error.message}\nGoogle Sheets editing requires the Sheets API and edit access for this account. Approve Google's authorization prompt when applying an edit.`;
   }
   return error.message;
+}
+
+function getHighlightedRange() {
+  const nameBox = document.querySelector("#t-name-box")
+    || document.querySelector('input[aria-label="Name box"]')
+    || document.querySelector('[aria-label="Name box"][contenteditable="true"]');
+  const value = nameBox?.value || nameBox?.textContent || "";
+  const match = value.trim().match(/(?:^|!)(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?)$/i);
+  return match ? match[1].replace(/\$/g, "").toUpperCase() : null;
+}
+
+function getHighlightedSheetTitle() {
+  const activeTab = document.querySelector('[role="tab"][aria-selected="true"]');
+  const labels = [activeTab?.getAttribute("aria-label"), activeTab?.textContent]
+    .filter(Boolean)
+    .map((label) => label.trim());
+  const activeSheet = sheetInfo?.sheets.find((sheet) => labels.some((label) => (
+    label === sheet.title || label.startsWith(`${sheet.title},`)
+  )));
+  if (activeSheet) return activeSheet.title;
+  return sheetInfo?.sheets.length === 1 ? sheetInfo.sheets[0].title : null;
 }
 
 function setSheetPanelOpen(isOpen) {
@@ -57,6 +78,7 @@ function ensureSheetLauncher() {
       sheetInfo = null;
       sheetSnapshot = null;
       sheetProposal = null;
+      sheetPanel.querySelector(".exelidoc-sheet-selection").textContent = "No cells selected for Exelidoc.";
       await loadSheetInfo();
     }
   });
@@ -69,15 +91,12 @@ function createSheetPanel() {
   panel.className = "exelidoc-panel docs-mode";
   panel.innerHTML = `
     <div class="exelidoc-panel-header"><span>Exelidoc · Sheets</span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
-    <div class="exelidoc-docs-note">Select a cell range and describe the edit. The selected cells are sent to Gemini only when you generate a preview. Formula edits need separate confirmation.</div>
-    <label for="exelidoc-sheet-tab">Sheet tab</label>
-    <select id="exelidoc-sheet-tab"></select>
-    <label for="exelidoc-sheet-range">Cell range (maximum 2,500 cells)</label>
-    <input id="exelidoc-sheet-range" type="text" maxlength="24" value="A1:D20" />
-    <button class="exelidoc-sheet-load" type="button">Load range</button>
-    <label for="exelidoc-sheet-instruction">What should change?</label>
-    <textarea id="exelidoc-sheet-instruction" maxlength="10000" placeholder="e.g. Rename the headers and update the formula in D2"></textarea>
-    <button class="exelidoc-submit" type="button">Generate edit preview</button>
+    <div class="exelidoc-docs-note">Highlight cells in the sheet, then choose them for Exelidoc. Describe what to make or change. Nothing is written until you review and apply the preview.</div>
+    <div class="exelidoc-sheet-selection" aria-live="polite">No cells selected for Exelidoc.</div>
+    <button class="exelidoc-sheet-load" type="button">Select highlighted cells</button>
+    <label for="exelidoc-sheet-instruction">What would you like to make or change?</label>
+    <textarea id="exelidoc-sheet-instruction" maxlength="10000" placeholder="e.g. Create a monthly budget table, add totals, or update the selected cells"></textarea>
+    <button class="exelidoc-submit" type="button">Generate preview</button>
     <section class="exelidoc-sheet-preview" hidden>
       <pre class="exelidoc-sheet-changes"></pre>
       <label class="exelidoc-sheet-formula-confirm" hidden>
@@ -100,8 +119,7 @@ function createSheetPanel() {
     </details>
   `;
   const status = panel.querySelector(".exelidoc-status");
-  const tabSelect = panel.querySelector("#exelidoc-sheet-tab");
-  const rangeInput = panel.querySelector("#exelidoc-sheet-range");
+  const selectionLabel = panel.querySelector(".exelidoc-sheet-selection");
   const instructionInput = panel.querySelector("#exelidoc-sheet-instruction");
   const loadButton = panel.querySelector(".exelidoc-sheet-load");
   const previewButton = panel.querySelector(".exelidoc-submit");
@@ -123,19 +141,29 @@ function createSheetPanel() {
       status.textContent = "Open a Google Sheets spreadsheet and try again.";
       return;
     }
+    const range = getHighlightedRange();
+    const sheetTitle = getHighlightedSheetTitle();
+    if (!range || !sheetTitle) {
+      status.textContent = "Highlight cells in the sheet first, then click Select highlighted cells.";
+      return;
+    }
     loadButton.disabled = true;
     previewSection.hidden = true;
-    status.textContent = "Reading the selected range...";
+    sheetSnapshot = null;
+    sheetProposal = null;
+    selectionLabel.textContent = "No cells selected for Exelidoc.";
+    status.textContent = `Reading ${sheetTitle}!${range}...`;
     try {
       const response = await sendRuntimeMessage({
         type: "READ_GOOGLE_SHEET_EDIT_RANGE",
         spreadsheetId,
-        sheetTitle: tabSelect.value,
-        range: rangeInput.value.trim(),
+        sheetTitle,
+        range,
       });
       sheetSnapshot = response.snapshot;
       sheetProposal = null;
-      status.textContent = `${sheetSnapshot.dimensions.rowCount} row(s) by ${sheetSnapshot.dimensions.columnCount} column(s) loaded.`;
+      selectionLabel.textContent = `Selected for Exelidoc: ${sheetTitle}!${range}`;
+      status.textContent = `${sheetSnapshot.dimensions.rowCount} row(s) by ${sheetSnapshot.dimensions.columnCount} column(s) ready.`;
     } catch (error) {
       sheetSnapshot = null;
       status.textContent = permissionMessage(error);
@@ -147,7 +175,7 @@ function createSheetPanel() {
   previewButton.addEventListener("click", async () => {
     const instruction = instructionInput.value.trim();
     if (!sheetSnapshot || !instruction) {
-      status.textContent = "Load a range and enter the change you want.";
+      status.textContent = "Select highlighted cells and enter what you want to make or change.";
       return;
     }
     previewButton.disabled = true;
@@ -253,15 +281,7 @@ async function loadSheetInfo() {
   status.textContent = "Checking Google Sheets access...";
   try {
     sheetInfo = await sendRuntimeMessage({ type: "GET_GOOGLE_SHEET_INFO", spreadsheetId });
-    const tabSelect = sheetPanel.querySelector("#exelidoc-sheet-tab");
-    tabSelect.replaceChildren();
-    sheetInfo.sheets.forEach((sheet) => {
-      const option = document.createElement("option");
-      option.value = sheet.title;
-      option.textContent = sheet.title;
-      tabSelect.append(option);
-    });
-    status.textContent = `${sheetInfo.title} is ready. Load a range to begin.`;
+    status.textContent = `${sheetInfo.title} is ready. Highlight cells to begin.`;
   } catch (error) {
     sheetInfo = null;
     status.textContent = permissionMessage(error);

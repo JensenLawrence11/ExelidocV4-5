@@ -7,8 +7,6 @@ const GOOGLE_DATA_SCOPES = [
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
-const GOOGLE_SLIDES_SCOPE = "https://www.googleapis.com/auth/presentations.readonly";
-const GOOGLE_CONNECT_SCOPES = [...GOOGLE_DATA_SCOPES, GOOGLE_SLIDES_SCOPE];
 const GOOGLE_SHEETS_EDIT_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_SOURCE_LIMIT = 4;
 const GOOGLE_SOURCE_CONTENT_LIMIT = 6000;
@@ -107,9 +105,9 @@ function googleAuthorizationHelp(error, service) {
     || /oauth|insufficient authentication|not authorized|permission denied|access not configured|scope/i.test(message)
   ) {
     if (service === "Google data") {
-      return `Google OAuth authorization failed. Verify that this extension's ID is registered with the OAuth client, your Google account is a test user if the consent screen is in testing, and the required APIs and read scopes are enabled. Google reported: ${message}`;
+      return `Google OAuth authorization failed. Check that the signed-in account has access to the requested Google data. Google reported: ${message}`;
     }
-    return `Google denied ${service} access. Click "Update Google permissions" in the Exelidoc popup, enable the ${service} API in the same Google Cloud project, and add its read-only scope to the OAuth consent screen. Google reported: ${message}`;
+    return `Google denied ${service} access. Check that the ${service} API is enabled and the signed-in account can access this file. Google reported: ${message}`;
   }
   return message;
 }
@@ -1273,7 +1271,7 @@ async function handleGoogleSlidesQuestion(message, sender) {
   const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
   if (!sessionToken) throw new Error("no_session");
 
-  const accessToken = await getGoogleAccessToken([GOOGLE_SLIDES_SCOPE], false);
+  const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
   const presentation = await getGooglePresentation(match[1], accessToken);
   const content = extractGooglePresentationText(presentation).slice(0, GOOGLE_SOURCE_CONTENT_LIMIT);
   if (!content.trim()) throw new Error("No readable slide text was found in this presentation.");
@@ -1326,11 +1324,7 @@ async function handleHistoryFollowUp(message) {
 
   const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
   if (!sessionToken) throw new Error("no_session");
-  const needsSlidesScope = sourceRefs.some((sourceRef) => sourceRef.kind === "google_presentation");
-  const accessToken = await getGoogleAccessToken(
-    needsSlidesScope ? GOOGLE_CONNECT_SCOPES : GOOGLE_DATA_SCOPES,
-    false
-  );
+  const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
   const sources = await Promise.all(sourceRefs.map((sourceRef) => (
     getGoogleSourceForRef(sourceRef, accessToken)
   )));
@@ -1423,18 +1417,21 @@ function handleGoogleSheetMessage(message, sender, sendResponse, operation, labe
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "CONNECT_GOOGLE_DATA") {
     chrome.storage.local.get(["googleDataConnected"], ({ googleDataConnected }) => {
-      getGoogleAccessToken(GOOGLE_CONNECT_SCOPES, true)
+      getGoogleAccessToken(GOOGLE_DATA_SCOPES, true)
         .then(() => new Promise((resolve) => {
           chrome.storage.local.set({ googleDataConnected: true }, resolve);
         }))
         .then(async () => {
           if (googleDataConnected) {
             await ensureGmailIndexScanScheduled();
+            scanGmailInbox().catch((error) => {
+              console.error("Exelidoc Gmail: connection-triggered scan failed", error.message);
+            });
           } else {
             await startGmailIndexing();
           }
-          sendResponse({ ok: true, newConnection: !googleDataConnected });
         })
+        .then(() => sendResponse({ ok: true }))
         .catch((error) => {
           console.error("Exelidoc background: Google data authorization failed", error.message);
           sendResponse({ ok: false, error: googleAuthorizationHelp(error, "Google data") });

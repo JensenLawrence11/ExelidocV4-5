@@ -54,7 +54,7 @@
       <button id="connect-google-btn" type="button">Connect Google email, Docs, Sheets, and Slides</button>
       <button id="disconnect-google-btn" class="secondary-btn" type="button" hidden>Disconnect Google access</button>
       <p id="google-status" class="plans-note" role="status" aria-live="polite"></p>
-      <p class="account-note">If Sheets or Slides reports missing permission, click Update Google permissions and approve the requested access. The Google Sheets and Google Slides APIs must also be enabled in the OAuth project's Google Cloud console.</p>
+      <p class="account-note">Connect Google once to start automatic inbox scanning. The inbox is indexed locally; messages are not sent to Gemini unless you ask.</p>
       <p class="account-note">While Chrome is running, Exelidoc indexes your inbox every 15 minutes. Message text stays in this Chrome profile and is sent to Gemini only when you ask. Disconnecting Google clears the local index.</p>
       <button id="scan-gmail-now-btn" class="secondary-btn" type="button" hidden>Scan inbox now</button>
       <p id="gmail-scan-status" class="plans-note" role="status" aria-live="polite"></p>
@@ -62,30 +62,6 @@
       <input id="google-search-input" type="search" maxlength="200" placeholder="Search email, Docs, Sheets, and Slides" />
       <button id="google-search-btn" type="button">Search connected sources</button>
       <div id="google-results" aria-live="polite"></div>
-      <section id="google-sheet-editor" hidden>
-        <h3 id="google-sheet-editor-title">Edit spreadsheet cells</h3>
-        <p class="plans-note">Load a range to preview changes. Only the displayed cells are sent to Gemini. Nothing is written until you approve the preview. Formula changes need a separate confirmation.</p>
-        <label for="google-sheet-tab">Sheet tab</label>
-        <select id="google-sheet-tab"></select>
-        <label for="google-sheet-range">Cell range (maximum 2,500 cells)</label>
-        <input id="google-sheet-range" type="text" value="A1:Z90" maxlength="24" />
-        <button id="load-google-sheet-range" type="button">Load range for editing</button>
-        <div id="google-sheet-edit-controls" hidden>
-          <label for="google-sheet-instruction">What should change?</label>
-          <textarea id="google-sheet-instruction" maxlength="10000" placeholder="e.g. Rename the column headers and correct the Q2 forecast"></textarea>
-          <button id="preview-google-sheet-edit" type="button">Generate edit preview</button>
-        </div>
-        <div id="google-sheet-preview-section" hidden>
-          <pre id="google-sheet-preview"></pre>
-          <label id="confirm-google-formula-label" hidden>
-            <input id="confirm-google-formula-changes" type="checkbox" />
-            I reviewed and approve the formula changes shown above.
-          </label>
-          <button id="apply-google-sheet-edit" type="button" disabled>Apply approved changes</button>
-          <button id="discard-google-sheet-edit" class="secondary-btn" type="button">Discard preview</button>
-        </div>
-        <p id="google-sheet-edit-status" class="plans-note" role="status" aria-live="polite"></p>
-      </section>
       <label for="source-question-input">Ask about selected sources</label>
       <textarea id="source-question-input" maxlength="10000" placeholder="e.g. Summarize the matching emails and documents"></textarea>
       <button id="ask-sources-btn" type="button" disabled>Ask AI about selected sources</button>

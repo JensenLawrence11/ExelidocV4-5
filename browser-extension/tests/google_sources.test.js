@@ -44,9 +44,6 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
             "https://www.googleapis.com/auth/spreadsheets.readonly",
           ])
           || JSON.stringify(scopes) === JSON.stringify([
-            "https://www.googleapis.com/auth/presentations.readonly",
-          ])
-          || JSON.stringify(scopes) === JSON.stringify([
             "https://www.googleapis.com/auth/spreadsheets",
           ])
         );
@@ -263,7 +260,7 @@ test("history follow-up re-fetches source content only after the user asks", asy
   }]);
 });
 
-test("manifest schedules Gmail indexing and injects Exelidoc in Slides", () => {
+test("manifest schedules Gmail indexing and injects Exelidoc in Sheets and Slides", () => {
   assert.ok(manifest.permissions.includes("alarms"));
   assert.ok(manifest.content_scripts.some(({ matches, js }) => (
     matches.includes("https://docs.google.com/presentation/*")
@@ -273,7 +270,8 @@ test("manifest schedules Gmail indexing and injects Exelidoc in Slides", () => {
     matches.includes("https://docs.google.com/spreadsheets/*")
     && js.includes("content-scripts/gsheets.js")
   )));
-  assert.ok(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/presentations.readonly"));
+  assert.ok(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/gmail.readonly"));
+  assert.equal(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/presentations.readonly"), false);
 });
 
 test("Google Sheets edits recheck source values and formulas need separate confirmation", async () => {

@@ -70,9 +70,7 @@ label {
 }
 
 #create-account-btn, #sign-in-btn, #sign-out-btn, #save-password-btn, #manage-billing-btn,
-#connect-google-btn, #google-search-btn, #ask-sources-btn, #disconnect-google-btn, #scan-gmail-now-btn,
-#load-google-sheet-range, #preview-google-sheet-edit, #apply-google-sheet-edit,
-.google-sheet-edit-btn {
+#connect-google-btn, #google-search-btn, #ask-sources-btn, #disconnect-google-btn, #scan-gmail-now-btn {
   margin-top: 10px;
   width: 100%;
   padding: 9px 0;
@@ -86,9 +84,7 @@ label {
 }
 
 #create-account-btn:hover, #sign-in-btn:hover, #sign-out-btn:hover, #save-password-btn:hover, #manage-billing-btn:hover,
-#connect-google-btn:hover, #google-search-btn:hover, #ask-sources-btn:hover, #scan-gmail-now-btn:hover,
-#load-google-sheet-range:hover, #preview-google-sheet-edit:hover, #apply-google-sheet-edit:hover,
-.google-sheet-edit-btn:hover {
+#connect-google-btn:hover, #google-search-btn:hover, #ask-sources-btn:hover, #scan-gmail-now-btn:hover {
   background: var(--blue-deep);
 }
 
@@ -107,10 +103,7 @@ label {
 }
 
 #google-search-input,
-#source-question-input,
-#google-sheet-range,
-#google-sheet-tab,
-#google-sheet-instruction {
+#source-question-input {
   width: 100%;
   margin-bottom: 8px;
   padding: 8px 10px;
@@ -119,60 +112,9 @@ label {
   font: 12px var(--font-mono);
 }
 
-#source-question-input,
-#google-sheet-instruction {
+#source-question-input {
   min-height: 64px;
   resize: vertical;
-}
-
-#google-sheet-range,
-#google-sheet-tab {
-  height: 34px;
-}
-
-.google-sheet-edit-btn {
-  font-size: 11px;
-  padding: 7px;
-}
-
-#google-sheet-editor {
-  margin: 12px 0;
-  padding: 10px;
-  border: 1px solid #D7DDEA;
-  background: #F8FAFE;
-}
-
-#google-sheet-editor h3 {
-  margin: 0 0 8px;
-  font: 600 13px var(--font-display);
-}
-
-#google-sheet-preview {
-  max-height: 220px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: 10px var(--font-mono);
-}
-
-#confirm-google-formula-label {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  color: #8A3B00;
-  font: 600 11px var(--font-body);
-  letter-spacing: normal;
-  text-transform: none;
-}
-
-#apply-google-sheet-edit:disabled {
-  background: var(--gray);
-  cursor: not-allowed;
-}
-
-#discard-google-sheet-edit {
-  width: 100%;
-  margin-top: 8px;
 }
 
 #sources-section {
