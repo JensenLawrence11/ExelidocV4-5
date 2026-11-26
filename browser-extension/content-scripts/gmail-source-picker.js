@@ -58,7 +58,7 @@
           checkbox.value = String(index);
           checkbox.checked = true;
           const title = document.createElement("span");
-          title.textContent = `${item.title || "(no subject)"}${item.from ? ` · ${item.from}` : ""}`;
+          title.textContent = `${item.title || "(no subject)"}${item.from ? ` · ${item.from}` : ""} · ${item.location || "All Mail"}`;
           label.append(checkbox, title);
           resultsContainer.append(label);
         });

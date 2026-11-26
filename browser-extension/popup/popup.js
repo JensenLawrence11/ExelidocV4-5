@@ -64,14 +64,14 @@ async function refreshGmailScanStatus() {
     const connectButton = document.getElementById("connect-google-btn");
     connectButton.hidden = result.connected && result.accessConfigured;
     connectButton.textContent = result.connected
-      ? "Finish Google setup (Gmail + Sheets)"
-      : "Connect Google once (Gmail + Sheets)";
+      ? "Finish Google setup (Gmail + Docs + Sheets)"
+      : "Connect Google once (Gmail + Docs + Sheets)";
     document.getElementById("disconnect-google-btn").hidden = !result.connected;
     document.getElementById("google-status").textContent = result.connected
       ? result.accessConfigured
         ? "Google is ready. Inbox scanning refreshes every 5 minutes while Chrome is open."
-        : "Finish Google setup once to enable Gmail context and Sheets edits."
-      : "Connect Google once to use Gmail messages in Sheets and drafts.";
+        : "Finish Google setup once to enable Gmail context, Docs, and Sheets."
+      : "Connect Google once to use Gmail messages in Docs, Sheets, and drafts.";
     renderGmailScanStatus(result.connected, result.scan);
   } catch (error) {
     document.getElementById("gmail-scan-status").textContent = error.message;

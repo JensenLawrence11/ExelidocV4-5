@@ -47,7 +47,11 @@
     },
     {
       "matches": ["https://docs.google.com/document/*"],
-      "js": ["content-scripts/history-panel.js", "content-scripts/gdocs.js"],
+      "js": [
+        "content-scripts/history-panel.js",
+        "content-scripts/gmail-source-picker.js",
+        "content-scripts/gdocs.js"
+      ],
       "css": ["content-scripts/exelidoc-panel.css"],
       "run_at": "document_idle"
     },

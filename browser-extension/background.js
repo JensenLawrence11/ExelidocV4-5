@@ -2,13 +2,19 @@
 
 const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 const GOOGLE_DOCS_API = "https://docs.googleapis.com/v1/documents";
+const GOOGLE_DOCS_SCOPE = "https://www.googleapis.com/auth/documents";
 const GOOGLE_SHEETS_EDIT_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_DATA_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
-const GOOGLE_CONNECT_SCOPES = [...GOOGLE_DATA_SCOPES, GOOGLE_SHEETS_EDIT_SCOPE];
+const GOOGLE_CONNECT_SCOPES = [
+  ...GOOGLE_DATA_SCOPES,
+  GOOGLE_SHEETS_EDIT_SCOPE,
+  GOOGLE_DOCS_SCOPE,
+];
+const GOOGLE_ACCESS_CONFIG_VERSION = 2;
 const GOOGLE_SOURCE_LIMIT = 4;
 const GOOGLE_SOURCE_CONTENT_LIMIT = 6000;
 const GOOGLE_SHEET_EDIT_MAX_CELLS = 2500;
@@ -83,8 +89,8 @@ function getGoogleAccessToken(scopes, interactive) {
 
 function getGoogleDocsAccessToken() {
   return getGoogleAccessToken(
-    ["https://www.googleapis.com/auth/documents"],
-    true
+    [GOOGLE_DOCS_SCOPE],
+    false
   );
 }
 
@@ -315,10 +321,29 @@ async function getGmailSearchResults(query, accessToken) {
 }
 
 function makeGmailSource(message) {
+  const labelOrder = [
+    ["INBOX", "Inbox"],
+    ["SENT", "Sent"],
+    ["DRAFT", "Drafts"],
+    ["TRASH", "Trash"],
+    ["SPAM", "Spam"],
+    ["STARRED", "Starred"],
+    ["IMPORTANT", "Important"],
+    ["CATEGORY_PERSONAL", "Primary"],
+    ["CATEGORY_SOCIAL", "Social"],
+    ["CATEGORY_PROMOTIONS", "Promotions"],
+    ["CATEGORY_UPDATES", "Updates"],
+    ["CATEGORY_FORUMS", "Forums"],
+  ];
+  const labels = new Set(message.labelIds || []);
+  const location = labelOrder.find(([id]) => labels.has(id))?.[1] || "All Mail";
   return {
     type: "email",
     title: message.subject,
     url: getGmailMessageUrl(message.id),
+    from: message.from,
+    date: message.date,
+    location,
     content: [
       `From: ${message.from}`,
       `Date: ${message.date}`,
@@ -718,7 +743,7 @@ async function stopGmailIndexing() {
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
-      chrome.storage.local.remove(["googleDataConnected", "googleAccessConfigured"], resolve);
+      chrome.storage.local.remove(["googleDataConnected", "googleAccessConfigVersion"], resolve);
     });
   });
 }
@@ -1286,6 +1311,8 @@ async function handleGoogleDocsAnalysis(message, sender) {
     throw new Error("Google Docs did not return a document revision. Refresh and try again.");
   }
   const originalText = getDocumentPlainText(document);
+  const gmailContext = await getSelectedGmailContext(message.gmailSourceRefs);
+  const sourceUrl = getGoogleSourceUrl(sender);
   const response = await fetch(`${BACKEND_URL}/api/ai/analyze-text`, {
     method: "POST",
     headers: {
@@ -1295,8 +1322,13 @@ async function handleGoogleDocsAnalysis(message, sender) {
     body: JSON.stringify({
       text: originalText,
       instruction: message.instruction,
-      source_url: getGoogleSourceUrl(sender),
-      source_refs: [{ provider: "google", kind: "google_document", id: documentId }],
+      context: gmailContext.context,
+      source_url: sourceUrl,
+      source_urls: [sourceUrl, ...gmailContext.sources.map((source) => source.url)],
+      source_refs: [
+        { provider: "google", kind: "google_document", id: documentId },
+        ...gmailContext.sourceRefs,
+      ],
       client: "chrome",
     }),
   });
@@ -1533,7 +1565,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .then(() => new Promise((resolve) => {
           chrome.storage.local.set({
             googleDataConnected: true,
-            googleAccessConfigured: true,
+            googleAccessConfigVersion: GOOGLE_ACCESS_CONFIG_VERSION,
           }, resolve);
         }))
         .then(async () => {
@@ -1567,12 +1599,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "GET_GMAIL_SCAN_STATUS") {
     chrome.storage.local.get(
-      ["googleDataConnected", "googleAccessConfigured", "gmailScanState"],
+      ["googleDataConnected", "googleAccessConfigVersion", "gmailScanState"],
       (data) => {
         sendResponse({
           ok: true,
           connected: Boolean(data.googleDataConnected),
-          accessConfigured: Boolean(data.googleAccessConfigured),
+          accessConfigured: data.googleAccessConfigVersion === GOOGLE_ACCESS_CONFIG_VERSION,
           scan: data.gmailScanState || null,
         });
       }

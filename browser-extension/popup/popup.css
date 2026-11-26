@@ -1,9 +1,9 @@
 :root {
-  --black: #0A0E17;
-  --blue: #2F6FED;
-  --blue-deep: #1B3F91;
-  --blue-pale: #EAF0FD;
-  --gray: #7C879C;
+  --black: #17233c;
+  --blue: #3857df;
+  --blue-deep: #2a43bb;
+  --blue-pale: #eef2ff;
+  --gray: #69758d;
   --font-display: "Segoe UI", Arial, sans-serif;
   --font-body: "Segoe UI", Arial, sans-serif;
   --font-mono: Consolas, monospace;
@@ -11,11 +11,11 @@
 
 body {
   font-family: var(--font-body);
-  width: 300px;
+  width: 340px;
   padding: 0;
   margin: 0;
   color: var(--black);
-  background: #fff;
+  background: #f7f8fc;
   max-height: 600px;
   overflow-y: auto;
 }
@@ -389,4 +389,108 @@ h2 {
 .checkout-btn:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: linear-gradient(130deg, #101a31, #283b73);
+  padding: 18px 20px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 11px;
+  background: linear-gradient(145deg, #6888ff, #9e76f3);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+header p {
+  margin: 3px 0 0;
+  color: #c3cce4;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+main {
+  padding: 16px 20px 20px;
+}
+
+#email-input,
+#password-input,
+#new-password-input,
+#google-search-input,
+#source-question-input,
+#delete-password-input,
+#delete-confirmation-input {
+  border-color: #dce2ed;
+  border-radius: 9px;
+  background: #fff;
+  font-family: var(--font-body);
+}
+
+#email-input:focus,
+#password-input:focus,
+#new-password-input:focus,
+#google-search-input:focus,
+#source-question-input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(56, 87, 223, 0.12);
+}
+
+#create-account-btn,
+#sign-in-btn,
+#sign-out-btn,
+#save-password-btn,
+#manage-billing-btn,
+#connect-google-btn,
+#google-search-btn,
+#ask-sources-btn,
+#disconnect-google-btn,
+#scan-gmail-now-btn,
+#clear-history-btn {
+  padding: 10px;
+  border-radius: 9px;
+}
+
+.auth-mode {
+  border-color: #e4e8f0;
+}
+
+.auth-mode button {
+  padding: 10px 4px;
+}
+
+#sources-section,
+#plans-section,
+#sharing-section,
+#history-section,
+#delete-account-section,
+#password-update-section {
+  border-color: #e4e8f0;
+}
+
+.legal-links {
+  border-color: #e4e8f0;
+}
+
+.google-result {
+  padding: 10px;
+  border: 1px solid #e6eaf2;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.checkout-btn,
+.danger-btn {
+  border-radius: 9px;
 }

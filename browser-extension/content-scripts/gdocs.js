@@ -11,7 +11,7 @@ function ensureDocsLauncher() {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "exelidoc-docs-launcher";
-  button.textContent = "Exelidoc";
+  button.innerHTML = '<span class="exelidoc-mark">E</span><span>Exelidoc</span>';
   button.setAttribute("aria-label", "Open Exelidoc panel");
   button.setAttribute("aria-expanded", "false");
   button.setAttribute("aria-controls", "exelidoc-docs-panel");
@@ -46,9 +46,10 @@ function createExelidocPanel() {
   panel.className = "exelidoc-panel docs-mode";
   panel.id = "exelidoc-docs-panel";
   panel.innerHTML = `
-    <div class="exelidoc-panel-header"><span>Exelidoc</span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
+    <div class="exelidoc-panel-header"><span class="exelidoc-brand"><span class="exelidoc-mark">E</span>Exelidoc <span class="exelidoc-product-label">Docs</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
     <textarea class="exelidoc-query" placeholder="e.g. write a section, rewrite this, make it more concise"></textarea>
-    <div class="exelidoc-docs-note">Reads the full plain-text document. Review the proposed replacement before applying it. Formatting resets; tables and embedded objects are unsupported.</div>
+    <div class="exelidoc-docs-note">Use Gmail emails as supporting context if helpful. Exelidoc will propose a full-document replacement for you to review.</div>
+    <div class="exelidoc-gmail-source-picker-slot"></div>
     <button class="exelidoc-submit">Generate preview</button>
     <section class="exelidoc-docs-preview" hidden>
       <label for="exelidoc-docs-preview-text">Proposed full-document replacement</label>
@@ -79,6 +80,9 @@ function createExelidocPanel() {
   const undoEl = panel.querySelector(".exelidoc-undo");
   const statusEl = panel.querySelector(".exelidoc-status");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
+  const gmailSourcePicker = window.ExelidocGmailSourcePicker.mount(
+    panel.querySelector(".exelidoc-gmail-source-picker-slot")
+  );
   let pendingPreview = null;
   let previousText = null;
   let undoRevisionId = null;
@@ -144,7 +148,12 @@ function createExelidocPanel() {
     console.info("Exelidoc Docs: sending Docs API request", { documentId });
 
     chrome.runtime.sendMessage(
-      { type: "ANALYZE_GOOGLE_DOC", documentId, instruction },
+      {
+        type: "ANALYZE_GOOGLE_DOC",
+        documentId,
+        instruction,
+        gmailSourceRefs: gmailSourcePicker.getSelectedRefs(),
+      },
       (response) => {
         submitEl.disabled = false;
         if (chrome.runtime.lastError) {
@@ -175,7 +184,10 @@ function createExelidocPanel() {
         };
         previewTextEl.value = response.correctedText;
         previewEl.hidden = false;
-        statusEl.textContent = "Review the proposed replacement. Your document has not been changed.";
+        const selectedTitles = gmailSourcePicker.getSelectedTitles();
+        statusEl.textContent = selectedTitles.length
+          ? `Review the proposed replacement. Included Gmail: ${selectedTitles.join("; ")}. Your document has not been changed.`
+          : "Review the proposed replacement. Your document has not been changed.";
       }
     );
   });

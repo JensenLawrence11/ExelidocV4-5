@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const { TextDecoder } = require("node:util");
 
 const backgroundSource = fs.readFileSync(
   path.join(__dirname, "..", "background.js"),
@@ -46,6 +47,27 @@ function createHarness({ documents, backendStatus = 200, backendData } = {}) {
   };
   const fetch = async (url, options = {}) => {
     requests.push({ url, options });
+    if (url.startsWith("https://gmail.googleapis.com/")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: "message-1",
+          labelIds: ["INBOX", "CATEGORY_PERSONAL"],
+          payload: {
+            headers: [
+              { name: "Subject", value: "Budget update" },
+              { name: "From", value: "person@example.com" },
+              { name: "Date", value: "Mon, 1 Jan 2026 12:00:00 +0000" },
+            ],
+            mimeType: "text/plain",
+            body: {
+              data: Buffer.from("The budget is approved.").toString("base64url"),
+            },
+          },
+        }),
+      };
+    }
     if (url.includes(":batchUpdate")) {
       return {
         ok: true,
@@ -76,6 +98,7 @@ function createHarness({ documents, backendStatus = 200, backendData } = {}) {
     fetch,
     URL,
     console: { info() {}, warn() {}, error() {} },
+    atob: (value) => Buffer.from(value, "base64").toString("binary"),
     encodeURIComponent,
     JSON,
     Promise,
@@ -83,6 +106,8 @@ function createHarness({ documents, backendStatus = 200, backendData } = {}) {
     String,
     Array,
     Number,
+    TextDecoder,
+    Uint8Array,
   });
 
   function send(message) {
@@ -104,7 +129,7 @@ test("analysis returns a preview without writing to Google Docs", async () => {
     instruction: "Rewrite this",
   });
 
-  assert.equal(result.ok, true);
+  assert.equal(result.ok, true, result.error);
   assert.equal(result.correctedText, "Revised text");
   assert.equal(result.revisionId, "rev-1");
   const analysis = harness.requests.find(({ url }) => url.endsWith("/api/ai/analyze-text"));
@@ -113,8 +138,43 @@ test("analysis returns a preview without writing to Google Docs", async () => {
     JSON.parse(analysis.options.body).source_url,
     "https://docs.google.com/document/d/doc-1/edit"
   );
+  assert.deepEqual(JSON.parse(analysis.options.body).source_refs, [
+    { provider: "google", kind: "google_document", id: "doc-1" },
+  ]);
+  assert.deepEqual(JSON.parse(analysis.options.body).source_urls, [
+    "https://docs.google.com/document/d/doc-1/edit",
+  ]);
   assert.equal("history_ids" in JSON.parse(analysis.options.body), false);
   assert.equal(harness.requests.some(({ url }) => url.includes(":batchUpdate")), false);
+});
+
+test("Docs analysis includes only selected Gmail context and source references", async () => {
+  const harness = createHarness({
+    documents: [documentSnapshot("rev-1", "Original document\n")],
+  });
+  const result = await harness.send({
+    type: "ANALYZE_GOOGLE_DOC",
+    documentId: "doc-1",
+    instruction: "Use the email to update this",
+    gmailSourceRefs: [{
+      provider: "google",
+      kind: "gmail_message",
+      id: "message-1",
+    }],
+  });
+
+  assert.equal(result.ok, true, result.error);
+  const analysis = harness.requests.find(({ url }) => url.endsWith("/api/ai/analyze-text"));
+  const body = JSON.parse(analysis.options.body);
+  assert.match(body.context, /The budget is approved/);
+  assert.deepEqual(body.source_refs, [
+    { provider: "google", kind: "google_document", id: "doc-1" },
+    { provider: "google", kind: "gmail_message", id: "message-1" },
+  ]);
+  assert.deepEqual(body.source_urls, [
+    "https://docs.google.com/document/d/doc-1/edit",
+    "https://mail.google.com/mail/#all/message-1",
+  ]);
 });
 
 test("apply requires the preview revision and writes with a revision guard", async () => {

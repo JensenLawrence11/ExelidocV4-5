@@ -275,7 +275,7 @@ test("scheduled alarm is restored after startup and disconnect deletes local ind
   assert.equal(disconnected.ok, true);
   assert.equal(harness.indexedDB.databases.has("exelidoc-gmail-index"), false);
   assert.equal(harness.data.googleDataConnected, undefined);
-  assert.equal(harness.data.googleAccessConfigured, undefined);
+  assert.equal(harness.data.googleAccessConfigVersion, undefined);
   assert.equal(harness.alarms.length, 0);
 });
 
@@ -290,6 +290,10 @@ test("startup upgrades an old inbox alarm to a five-minute refresh", async () =>
 test("reconnecting Google preserves the existing local inbox index", async () => {
   const harness = createHarness();
   await harness.send({ type: "SCAN_GMAIL_NOW" });
+  const beforeSetup = await harness.send({ type: "GET_GMAIL_SCAN_STATUS" });
+  assert.equal(beforeSetup.connected, true);
+  assert.equal(beforeSetup.accessConfigured, false);
+
   const result = await harness.send({ type: "CONNECT_GOOGLE_DATA" });
 
   assert.equal(result.ok, true);
@@ -299,5 +303,8 @@ test("reconnecting Google preserves the existing local inbox index", async () =>
   );
   assert.ok(harness.requestedScopes.includes("https://www.googleapis.com/auth/gmail.readonly"));
   assert.ok(harness.requestedScopes.includes("https://www.googleapis.com/auth/spreadsheets"));
-  assert.equal(harness.data.googleAccessConfigured, true);
+  assert.ok(harness.requestedScopes.includes("https://www.googleapis.com/auth/documents"));
+  assert.equal(harness.data.googleAccessConfigVersion, 2);
+  const afterSetup = await harness.send({ type: "GET_GMAIL_SCAN_STATUS" });
+  assert.equal(afterSetup.accessConfigured, true);
 });

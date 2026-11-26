@@ -7,7 +7,11 @@
 </head>
 <body>
   <header>
-    <h1>Exelidoc</h1>
+    <span class="brand-mark">E</span>
+    <div>
+      <h1>Exelidoc</h1>
+      <p>Your workspace, thoughtfully connected.</p>
+    </div>
   </header>
   <main>
     <section id="settings-section">
@@ -51,10 +55,10 @@
     <section id="sources-section" hidden>
       <h2>Search Google sources</h2>
       <p class="plans-note">Search happens only when you ask. Review and select email, Docs, Sheets, or Slides results before sending their contents to Gemini.</p>
-      <button id="connect-google-btn" type="button">Connect Google once (Gmail + Sheets)</button>
+      <button id="connect-google-btn" type="button">Connect Google once (Gmail + Docs + Sheets)</button>
       <button id="disconnect-google-btn" class="secondary-btn" type="button" hidden>Disconnect Google access</button>
       <p id="google-status" class="plans-note" role="status" aria-live="polite"></p>
-      <p class="account-note">Connect Google once to use Gmail with Sheets and drafts. Inbox indexing stays local; messages are sent to Gemini only when you ask it to use them.</p>
+      <p class="account-note">Connect Google once to use Gmail with Docs, Sheets, and drafts. Inbox indexing stays local; messages are sent to Gemini only when you ask it to use them.</p>
       <p class="account-note">While Chrome is running, Exelidoc indexes your inbox every 5 minutes. Message text stays in this Chrome profile and is sent to Gemini only when you ask. Disconnecting Google clears the local index.</p>
       <button id="scan-gmail-now-btn" class="secondary-btn" type="button" hidden>Scan inbox now</button>
       <p id="gmail-scan-status" class="plans-note" role="status" aria-live="polite"></p>

@@ -64,6 +64,7 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
     if (pathname.endsWith("/users/me/messages/message-1")) {
       return jsonResponse({
         id: "message-1",
+        labelIds: ["INBOX", "CATEGORY_PERSONAL"],
         payload: {
           mimeType: "text/plain",
           headers: [
@@ -278,6 +279,7 @@ test("Gmail source search returns selectable email references", async () => {
   assert.equal(response.items.length, 1);
   assert.equal(response.items[0].title, "Budget review");
   assert.equal(response.items[0].sourceRef.id, "message-1");
+  assert.equal(response.items[0].location, "Inbox");
 });
 
 test("Gmail draft analysis includes only explicitly selected email content", async () => {
@@ -344,9 +346,20 @@ test("manifest schedules Gmail indexing and injects Exelidoc in Sheets and Slide
     matches.includes("https://docs.google.com/spreadsheets/*")
     && js.includes("content-scripts/gsheets.js")
   )));
+  assert.ok(manifest.content_scripts.some(({ matches, js }) => (
+    matches.includes("https://docs.google.com/document/*")
+    && js.includes("content-scripts/gmail-source-picker.js")
+    && js.indexOf("content-scripts/gmail-source-picker.js")
+      < js.indexOf("content-scripts/gdocs.js")
+  )));
   assert.ok(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/gmail.readonly"));
+  assert.ok(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/documents"));
   assert.ok(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/spreadsheets"));
   assert.equal(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/presentations.readonly"), false);
+  assert.ok(manifest.content_scripts.some(({ matches, js }) => (
+    matches.includes("https://docs.google.com/document/*")
+    && js.includes("content-scripts/gmail-source-picker.js")
+  )));
   assert.ok(manifest.content_scripts.some(({ matches, js }) => (
     matches.includes("https://mail.google.com/*")
     && js.includes("content-scripts/gmail-source-picker.js")

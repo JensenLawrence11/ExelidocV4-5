@@ -3,6 +3,128 @@ let activeBox = null;
 let preEditSnapshot = null;
 let pendingPreview = null;
 let gmailSourcePicker = null;
+let gmailFinderPanel = null;
+let gmailFinderLauncher = null;
+
+function ensureGmailFinder() {
+  if (gmailFinderLauncher) return;
+  const launcher = document.createElement("button");
+  launcher.type = "button";
+  launcher.className = "exelidoc-docs-launcher exelidoc-gmail-finder-launcher";
+  launcher.innerHTML = '<span class="exelidoc-mark">E</span><span>Find an email</span>';
+  launcher.setAttribute("aria-label", "Find an email in Gmail");
+  launcher.setAttribute("aria-expanded", "false");
+  launcher.setAttribute("aria-controls", "exelidoc-gmail-finder");
+  launcher.addEventListener("click", () => {
+    const isOpen = gmailFinderPanel && window.getComputedStyle(gmailFinderPanel).display !== "none";
+    setGmailFinderOpen(!isOpen);
+  });
+  document.body.appendChild(launcher);
+  gmailFinderLauncher = launcher;
+}
+
+function setGmailFinderOpen(isOpen) {
+  if (!gmailFinderPanel && isOpen) gmailFinderPanel = createGmailFinderPanel();
+  if (!gmailFinderPanel) return;
+  gmailFinderPanel.style.display = isOpen ? "flex" : "none";
+  gmailFinderLauncher?.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) gmailFinderPanel.querySelector('input[type="search"]').focus();
+}
+
+function createGmailFinderPanel() {
+  const panel = document.createElement("section");
+  panel.id = "exelidoc-gmail-finder";
+  panel.className = "exelidoc-panel docs-mode exelidoc-gmail-finder";
+  panel.setAttribute("aria-label", "Find an email");
+  panel.innerHTML = `
+    <div class="exelidoc-panel-header">
+      <span class="exelidoc-brand"><span class="exelidoc-mark">E</span>Find an email <span class="exelidoc-product-label">Gmail</span></span>
+      <button class="exelidoc-close" type="button" aria-label="Close email finder">&times;</button>
+    </div>
+    <form class="exelidoc-gmail-finder-form">
+      <label for="exelidoc-gmail-finder-query">Search your email</label>
+      <input id="exelidoc-gmail-finder-query" type="search" maxlength="200" placeholder="Subject, sender, or message text" required />
+      <button class="exelidoc-submit" type="submit">Find email</button>
+    </form>
+    <div class="exelidoc-gmail-finder-status" role="status" aria-live="polite"></div>
+    <div class="exelidoc-gmail-finder-results"></div>
+  `;
+  const form = panel.querySelector(".exelidoc-gmail-finder-form");
+  const input = panel.querySelector('input[type="search"]');
+  const submit = form.querySelector('button[type="submit"]');
+  const status = panel.querySelector(".exelidoc-gmail-finder-status");
+  const results = panel.querySelector(".exelidoc-gmail-finder-results");
+
+  panel.querySelector(".exelidoc-close").addEventListener("click", () => setGmailFinderOpen(false));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const query = input.value.trim();
+    if (!query) {
+      status.textContent = "Enter a word or phrase to search.";
+      return;
+    }
+    submit.disabled = true;
+    status.textContent = "Searching indexed and recent Gmail messages...";
+    results.replaceChildren();
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: "SEARCH_GMAIL_CONTEXT", query }, (result) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error("Extension reloaded — refresh this page."));
+          } else if (!result?.ok) {
+            reject(new Error(result?.error || "Could not search Gmail."));
+          } else {
+            resolve(result);
+          }
+        });
+      });
+      const items = response.items || [];
+      if (!items.length) {
+        status.textContent = "No matching emails found. Try another search.";
+        return;
+      }
+      items.forEach((item) => {
+        const result = document.createElement("article");
+        result.className = "exelidoc-gmail-finder-result";
+        const heading = document.createElement("strong");
+        heading.textContent = item.title || "(no subject)";
+        const details = document.createElement("div");
+        details.className = "exelidoc-gmail-finder-meta";
+        details.textContent = [item.from, item.date].filter(Boolean).join(" · ");
+        const location = document.createElement("span");
+        location.className = "exelidoc-gmail-finder-location";
+        location.textContent = item.location || "All Mail";
+        const link = document.createElement("a");
+        link.textContent = "Open email";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        try {
+          const url = new URL(item.url);
+          if (url.protocol === "https:" && url.hostname === "mail.google.com") {
+            link.href = url.href;
+          } else {
+            throw new Error("Invalid Gmail URL");
+          }
+        } catch (error) {
+          link.removeAttribute("target");
+          link.removeAttribute("rel");
+          link.textContent = "Email link unavailable";
+          link.setAttribute("aria-disabled", "true");
+        }
+        result.append(heading, details, location, link);
+        results.append(result);
+      });
+      status.textContent = `${items.length} matching email(s). Location is shown for each result.`;
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  document.body.appendChild(panel);
+  return panel;
+}
 
 function captureComposeSnapshot(box) {
   if (!box) return null;
@@ -92,7 +214,7 @@ function createExelidocPanel() {
   const panel = document.createElement("div");
   panel.className = "exelidoc-panel";
   panel.innerHTML = `
-    <div class="exelidoc-panel-header">Exelidoc</div>
+    <div class="exelidoc-panel-header"><span class="exelidoc-brand"><span class="exelidoc-mark">E</span>Exelidoc <span class="exelidoc-product-label">Gmail</span></span></div>
     <textarea class="exelidoc-query" placeholder="e.g. make this more formal, fix grammar, shorten it... or write a new email from scratch"></textarea>
     <div class="exelidoc-gmail-source-picker-slot"></div>
     <button class="exelidoc-submit">Ask</button>
@@ -291,6 +413,7 @@ document.addEventListener("focusin", (event) => {
   if (!activeBox) return;
 
   const target = event.target;
+  if (gmailFinderPanel?.contains(target)) return;
   const withinBox = activeBox.contains(target);
   const withinPanel = activePanel && activePanel.contains(target);
 
@@ -298,3 +421,5 @@ document.addEventListener("focusin", (event) => {
     setActiveBox(null);
   }
 });
+
+ensureGmailFinder();

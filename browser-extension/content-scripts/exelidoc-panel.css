@@ -373,3 +373,246 @@
   font-size: 11px;
   padding: 5px 9px;
 }
+
+.exelidoc-panel {
+  border-color: #e4e8f0;
+  border-radius: 16px;
+  padding: 16px;
+  gap: 12px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(20, 32, 58, 0.18), 0 3px 10px rgba(20, 32, 58, 0.08);
+  color: #17233c;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+.exelidoc-panel.docs-mode {
+  bottom: 82px;
+  left: 18px;
+  width: 360px;
+  max-width: calc(100vw - 36px);
+  max-height: calc(100vh - 100px);
+}
+
+.exelidoc-docs-launcher {
+  bottom: 18px;
+  left: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px 10px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2746d8, #593dd4);
+  box-shadow: 0 7px 22px rgba(40, 59, 175, 0.32);
+  font: 600 13px Inter, "Segoe UI", Arial, sans-serif;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.exelidoc-docs-launcher:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(40, 59, 175, 0.38);
+}
+
+.exelidoc-mark {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #7894ff, #a486ff);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.exelidoc-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exelidoc-product-label {
+  margin-left: 2px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f0f2ff;
+  color: #4a54b7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.exelidoc-panel-header {
+  min-height: 28px;
+  font-size: 14px;
+  color: #17233c;
+}
+
+.exelidoc-close {
+  border-radius: 9px;
+}
+
+.exelidoc-query,
+.exelidoc-docs-preview-text,
+.exelidoc-panel input:not([type="checkbox"]),
+.exelidoc-panel select {
+  border-color: #dce2ed;
+  border-radius: 10px;
+  background: #fbfcff;
+}
+
+.exelidoc-query:focus,
+.exelidoc-panel input:focus,
+.exelidoc-panel select:focus {
+  border-color: #6878ed;
+  box-shadow: 0 0 0 3px rgba(94, 112, 231, 0.14);
+}
+
+.exelidoc-submit,
+.exelidoc-gmail-source-picker button,
+.exelidoc-gmail-finder-form button {
+  padding: 9px 15px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #3156e8, #5946d5);
+  font: 600 12px Inter, "Segoe UI", Arial, sans-serif;
+}
+
+.exelidoc-submit:hover,
+.exelidoc-gmail-source-picker button:hover,
+.exelidoc-gmail-finder-form button:hover {
+  background: #3049c7;
+}
+
+.exelidoc-submit:disabled,
+.exelidoc-gmail-source-picker button:disabled,
+.exelidoc-gmail-finder-form button:disabled {
+  background: #aeb8df;
+}
+
+.exelidoc-gmail-source-picker,
+.exelidoc-docs-preview {
+  border-color: #e1e6f0;
+  border-radius: 12px;
+  background: #fbfcff;
+}
+
+.exelidoc-gmail-source-picker summary,
+.exelidoc-history > summary {
+  color: #283550;
+  font-size: 12px;
+}
+
+.exelidoc-docs-note,
+.exelidoc-status,
+.exelidoc-gmail-status {
+  color: #65718a;
+  line-height: 1.5;
+}
+
+.exelidoc-docs-apply {
+  border-color: #3156e8;
+  border-radius: 9px;
+  background: #3156e8;
+}
+
+.exelidoc-docs-discard,
+.exelidoc-undo {
+  border-color: #dce2ed;
+  border-radius: 9px;
+}
+
+.exelidoc-history {
+  border-top-color: #e7eaf1;
+}
+
+.exelidoc-gmail-finder {
+  z-index: 10000;
+}
+
+.exelidoc-gmail-finder-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exelidoc-gmail-finder-form label {
+  color: #65718a;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.exelidoc-gmail-finder-form button {
+  align-self: flex-start;
+  width: auto;
+  margin-top: 0;
+  color: #fff;
+  cursor: pointer;
+}
+
+.exelidoc-gmail-finder-status,
+.exelidoc-gmail-finder-meta {
+  color: #65718a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.exelidoc-gmail-finder-results {
+  display: grid;
+  gap: 8px;
+}
+
+.exelidoc-gmail-finder-result {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #e6eaf2;
+  border-radius: 11px;
+  background: #fbfcff;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.exelidoc-gmail-finder-result strong {
+  color: #1c2943;
+}
+
+.exelidoc-gmail-finder-location {
+  justify-self: start;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4352b4;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.exelidoc-gmail-finder-result a {
+  color: #3554d8;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.exelidoc-gmail-finder-result a:hover {
+  text-decoration: underline;
+}
+
+.exelidoc-gmail-finder-result a[aria-disabled="true"] {
+  color: #7d8798;
+  cursor: default;
+}
+
+@media (max-width: 520px) {
+  .exelidoc-panel.docs-mode {
+    left: 12px;
+    bottom: 72px;
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 84px);
+  }
+
+  .exelidoc-docs-launcher {
+    left: 12px;
+    bottom: 12px;
+  }
+}
