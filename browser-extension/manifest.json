@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Exelidoc",
   "version": "1.2.9",
-  "description": "On-demand AI writing help for Gmail and Google Docs.",
+  "description": "On-demand AI help for Gmail, Docs, Sheets, and Slides.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -22,6 +22,7 @@
       "https://www.googleapis.com/auth/gmail.readonly",
       "https://www.googleapis.com/auth/drive.readonly",
       "https://www.googleapis.com/auth/spreadsheets.readonly",
+      "https://www.googleapis.com/auth/presentations.readonly",
       "https://www.googleapis.com/auth/spreadsheets"
     ]
   },
@@ -44,6 +45,12 @@
     {
       "matches": ["https://docs.google.com/document/*"],
       "js": ["content-scripts/history-panel.js", "content-scripts/gdocs.js"],
+      "css": ["content-scripts/exelidoc-panel.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://docs.google.com/spreadsheets/*"],
+      "js": ["content-scripts/history-panel.js", "content-scripts/gsheets.js"],
       "css": ["content-scripts/exelidoc-panel.css"],
       "run_at": "document_idle"
     },

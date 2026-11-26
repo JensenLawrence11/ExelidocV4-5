@@ -99,11 +99,15 @@ extension as live purchases.
 
 #### Google account access
 
-The extension uses Chrome OAuth for on-demand Gmail, Drive, Docs, and Sheets
-access. In Google Cloud, enable the Gmail API, Drive API, Google Docs API,
-Google Sheets API, and Google Slides API. Register the published Chrome Web Store extension ID on its
-OAuth client; register the separate unpacked extension ID on a development
-OAuth client. Configure the OAuth consent screen and complete Google's required
+The extension uses Chrome OAuth for on-demand Gmail, Drive, Docs, Sheets, and
+Slides access. In Google Cloud, enable the Gmail API, Drive API, Google Docs
+API, Google Sheets API, and Google Slides API. Register the published Chrome
+Web Store extension ID on its OAuth client; register the separate unpacked
+extension ID on a development OAuth client. Add the Gmail/Drive/Sheets read scopes and
+`https://www.googleapis.com/auth/presentations.readonly` to the OAuth consent
+screen and add test users when the app is in testing. After reloading an
+extension with changed scopes, use **Update Google permissions** in the popup
+and approve the new access. Configure the OAuth consent screen and complete Google's required
 verification before publishing the Gmail, Drive, and spreadsheet permissions.
 The user connects a Google account in the extension. Searching is initiated
 only when requested, and source contents are sent to Gemini only for results
@@ -116,7 +120,8 @@ follow-ups; source contents and AI responses are not retained.
 
 Google Docs edits use a reviewed full-text replacement and reject documents
 containing unsupported tables or embedded objects. Google Sheets edits require
-a separately requested write permission: users load a cell range, review the
+a separately requested write permission: the Exelidoc launcher appears inside
+an open Sheet, where users load a cell range, review the
 proposed cell-by-cell changes, and approve before applying. Formula changes
 require an additional checkbox and confirmation. Spreadsheet edits re-read the
 range before writing and stop if it changed after the preview. Neither flow

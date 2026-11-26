@@ -7,6 +7,8 @@ const GOOGLE_DATA_SCOPES = [
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
+const GOOGLE_SLIDES_SCOPE = "https://www.googleapis.com/auth/presentations.readonly";
+const GOOGLE_CONNECT_SCOPES = [...GOOGLE_DATA_SCOPES, GOOGLE_SLIDES_SCOPE];
 const GOOGLE_SHEETS_EDIT_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_SOURCE_LIMIT = 4;
 const GOOGLE_SOURCE_CONTENT_LIMIT = 6000;
@@ -96,6 +98,20 @@ async function readGoogleApiResponse(response) {
     throw error;
   }
   return data;
+}
+
+function googleAuthorizationHelp(error, service) {
+  const message = error?.message || `${service} request failed.`;
+  if (
+    error?.status === 403
+    || /oauth|insufficient authentication|not authorized|permission denied|access not configured|scope/i.test(message)
+  ) {
+    if (service === "Google data") {
+      return `Google OAuth authorization failed. Verify that this extension's ID is registered with the OAuth client, your Google account is a test user if the consent screen is in testing, and the required APIs and read scopes are enabled. Google reported: ${message}`;
+    }
+    return `Google denied ${service} access. Click "Update Google permissions" in the Exelidoc popup, enable the ${service} API in the same Google Cloud project, and add its read-only scope to the OAuth consent screen. Google reported: ${message}`;
+  }
+  return message;
 }
 
 function extractDocsText(content = []) {
@@ -843,23 +859,64 @@ async function getGoogleSheetMetadata(spreadsheetId, accessToken) {
   );
 }
 
-async function readGoogleSheetEditRange(message) {
+function verifyGoogleSheetSender(spreadsheetId, sender) {
+  if (typeof spreadsheetId !== "string" || !/^[\w-]{1,256}$/.test(spreadsheetId)) {
+    throw new Error("The selected spreadsheet could not be verified.");
+  }
+  if (!sender?.url) return spreadsheetId;
+  let senderUrl;
+  try {
+    senderUrl = new URL(sender.url);
+  } catch (error) {
+    throw new Error("Open a Google Sheets spreadsheet and try again.");
+  }
+  if (senderUrl.protocol === "chrome-extension:" && sender.id === chrome.runtime.id) {
+    return spreadsheetId;
+  }
+  const match = senderUrl.pathname.match(/^\/spreadsheets\/(?:u\/\d+\/)?d\/([\w-]+)/);
+  if (senderUrl.hostname !== "docs.google.com" || !match || match[1] !== spreadsheetId) {
+    throw new Error("The active Google Sheets spreadsheet could not be verified. Refresh the sheet and try again.");
+  }
+  return spreadsheetId;
+}
+
+function getGoogleSheetUrl(spreadsheetId) {
+  return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/edit`;
+}
+
+async function getGoogleSheetInfo(message, sender) {
+  const spreadsheetId = verifyGoogleSheetSender(message.spreadsheetId, sender);
   const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
-  const metadata = await getGoogleSheetMetadata(message.spreadsheetId, accessToken);
+  const metadata = await getGoogleSheetMetadata(spreadsheetId, accessToken);
+  return {
+    spreadsheetId,
+    title: metadata.properties?.title || "Google Sheet",
+    sheets: (metadata.sheets || []).map((sheet) => ({
+      title: sheet.properties?.title,
+      sheetId: sheet.properties?.sheetId,
+    })).filter((sheet) => sheet.title),
+    url: getGoogleSheetUrl(spreadsheetId),
+  };
+}
+
+async function readGoogleSheetEditRange(message, sender) {
+  const spreadsheetId = verifyGoogleSheetSender(message.spreadsheetId, sender);
+  const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
+  const metadata = await getGoogleSheetMetadata(spreadsheetId, accessToken);
   const titles = (metadata.sheets || []).map((sheet) => sheet.properties?.title).filter(Boolean);
   if (typeof message.sheetTitle !== "string" || !titles.includes(message.sheetTitle)) {
     throw new Error("The selected sheet tab could not be verified. Search again and retry.");
   }
   const dimensions = parseGoogleSheetRange(message.range);
   const { qualifiedRange, url } = getGoogleSheetRangeUrl(
-    message.spreadsheetId,
+    spreadsheetId,
     message.sheetTitle,
     message.range.trim().toUpperCase()
   );
   const data = await googleApiRequest(url, accessToken);
   return {
     snapshot: {
-      spreadsheetId: message.spreadsheetId,
+      spreadsheetId,
       sheetTitle: message.sheetTitle,
       range: message.range.trim().toUpperCase(),
       qualifiedRange,
@@ -867,6 +924,44 @@ async function readGoogleSheetEditRange(message) {
       values: normalizeGoogleSheetValues(data.values || [], dimensions.rowCount, dimensions.columnCount),
     },
   };
+}
+
+async function generateGoogleSheetEdit(message, sender) {
+  const snapshot = message.snapshot;
+  const spreadsheetId = verifyGoogleSheetSender(snapshot?.spreadsheetId, sender);
+  const dimensions = parseGoogleSheetRange(snapshot.range);
+  if (
+    !Array.isArray(snapshot.values)
+    || snapshot.values.length !== dimensions.rowCount
+    || snapshot.values.some((row) => !Array.isArray(row) || row.length !== dimensions.columnCount)
+    || snapshot.values.some((row) => row.some((value) => !isGoogleSheetScalar(value)))
+    || typeof message.instruction !== "string"
+    || !message.instruction.trim()
+    || message.instruction.length > 10000
+  ) {
+    throw new Error("Load a valid cell range and enter an edit instruction.");
+  }
+  const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
+  if (!sessionToken) throw new Error("Sign in to Exelidoc from the toolbar popup first.");
+  const sourceUrl = getGoogleSheetUrl(spreadsheetId);
+  const response = await fetch(`${BACKEND_URL}/api/ai/edit-range`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-Token": sessionToken,
+    },
+    body: JSON.stringify({
+      values: snapshot.values,
+      instruction: message.instruction,
+      source_url: sourceUrl,
+      source_urls: [sourceUrl],
+      source_refs: [{ provider: "google", kind: "google_spreadsheet", id: spreadsheetId }],
+      client: "chrome",
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Exelidoc backend returned ${response.status}.`);
+  return { data };
 }
 
 function isGoogleFormula(value) {
@@ -880,8 +975,9 @@ function isGoogleSheetScalar(value) {
     || (typeof value === "number" && Number.isFinite(value));
 }
 
-async function applyGoogleSheetEdit(message) {
+async function applyGoogleSheetEdit(message, sender) {
   const snapshot = message.snapshot;
+  verifyGoogleSheetSender(snapshot?.spreadsheetId, sender);
   if (
     !snapshot
     || typeof snapshot.spreadsheetId !== "string"
@@ -1177,7 +1273,7 @@ async function handleGoogleSlidesQuestion(message, sender) {
   const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
   if (!sessionToken) throw new Error("no_session");
 
-  const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
+  const accessToken = await getGoogleAccessToken([GOOGLE_SLIDES_SCOPE], false);
   const presentation = await getGooglePresentation(match[1], accessToken);
   const content = extractGooglePresentationText(presentation).slice(0, GOOGLE_SOURCE_CONTENT_LIMIT);
   if (!content.trim()) throw new Error("No readable slide text was found in this presentation.");
@@ -1230,7 +1326,11 @@ async function handleHistoryFollowUp(message) {
 
   const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
   if (!sessionToken) throw new Error("no_session");
-  const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
+  const needsSlidesScope = sourceRefs.some((sourceRef) => sourceRef.kind === "google_presentation");
+  const accessToken = await getGoogleAccessToken(
+    needsSlidesScope ? GOOGLE_CONNECT_SCOPES : GOOGLE_DATA_SCOPES,
+    false
+  );
   const sources = await Promise.all(sourceRefs.map((sourceRef) => (
     getGoogleSourceForRef(sourceRef, accessToken)
   )));
@@ -1305,32 +1405,40 @@ async function restoreGoogleDocumentText(message, sender) {
   return { ok: true, revisionId };
 }
 
-function handleGoogleSheetMessage(message, sendResponse, operation, label) {
+function handleGoogleSheetMessage(message, sender, sendResponse, operation, label) {
   chrome.storage.local.get(["googleDataConnected"], ({ googleDataConnected }) => {
     if (!googleDataConnected) {
-      sendResponse({ ok: false, error: "Connect Google email, Docs, and Sheets first." });
+      sendResponse({ ok: false, error: "Connect Google access from the Exelidoc popup first." });
       return;
     }
-    operation(message)
+    operation(message, sender)
       .then((result) => sendResponse({ ok: true, ...result }))
       .catch((error) => {
         console.error(`Exelidoc background: ${label} failed`, error.message);
-        sendResponse({ ok: false, error: error.message || `${label} failed.` });
+        sendResponse({ ok: false, error: googleAuthorizationHelp(error, "Sheets") });
       });
   });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "CONNECT_GOOGLE_DATA") {
-    getGoogleAccessToken(GOOGLE_DATA_SCOPES, true)
-      .then(() => new Promise((resolve) => {
-        chrome.storage.local.set({ googleDataConnected: true }, resolve);
-      }))
-      .then(() => startGmailIndexing())
-      .then(() => sendResponse({ ok: true }))
-      .catch((error) => {
-        console.error("Exelidoc background: Google data authorization failed", error.message);
-        sendResponse({ ok: false, error: error.message || "Google authorization failed." });
+    chrome.storage.local.get(["googleDataConnected"], ({ googleDataConnected }) => {
+      getGoogleAccessToken(GOOGLE_CONNECT_SCOPES, true)
+        .then(() => new Promise((resolve) => {
+          chrome.storage.local.set({ googleDataConnected: true }, resolve);
+        }))
+        .then(async () => {
+          if (googleDataConnected) {
+            await ensureGmailIndexScanScheduled();
+          } else {
+            await startGmailIndexing();
+          }
+          sendResponse({ ok: true, newConnection: !googleDataConnected });
+        })
+        .catch((error) => {
+          console.error("Exelidoc background: Google data authorization failed", error.message);
+          sendResponse({ ok: false, error: googleAuthorizationHelp(error, "Google data") });
+        });
       });
     return true;
   }
@@ -1383,12 +1491,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "READ_GOOGLE_SHEET_EDIT_RANGE") {
-    handleGoogleSheetMessage(message, sendResponse, readGoogleSheetEditRange, "Google Sheets read");
+    handleGoogleSheetMessage(message, sender, sendResponse, readGoogleSheetEditRange, "Google Sheets read");
+    return true;
+  }
+
+  if (message.type === "GET_GOOGLE_SHEET_INFO") {
+    handleGoogleSheetMessage(message, sender, sendResponse, getGoogleSheetInfo, "Google Sheets metadata");
+    return true;
+  }
+
+  if (message.type === "GENERATE_GOOGLE_SHEET_EDIT") {
+    handleGoogleSheetMessage(message, sender, sendResponse, generateGoogleSheetEdit, "Google Sheets preview");
     return true;
   }
 
   if (message.type === "APPLY_GOOGLE_SHEET_EDIT") {
-    handleGoogleSheetMessage(message, sendResponse, applyGoogleSheetEdit, "Google Sheets apply");
+    handleGoogleSheetMessage(message, sender, sendResponse, applyGoogleSheetEdit, "Google Sheets apply");
     return true;
   }
 
@@ -1407,7 +1525,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(sendResponse)
       .catch((error) => {
         console.error("Exelidoc background: Google Slides request failed", error.message);
-        sendResponse({ ok: false, error: error.message || "Google Slides request failed." });
+        sendResponse({ ok: false, error: googleAuthorizationHelp(error, "Slides") });
       });
     return true;
   }

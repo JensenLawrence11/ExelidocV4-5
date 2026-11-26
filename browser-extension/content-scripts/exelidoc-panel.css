@@ -96,6 +96,33 @@
   box-shadow: 0 0 0 1px #1a73e8;
 }
 
+.exelidoc-panel input:not([type="checkbox"]),
+.exelidoc-panel select {
+  width: 100%;
+  padding: 7px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: #fff;
+  color: #202124;
+  font: inherit;
+}
+
+.exelidoc-panel input[type="checkbox"] {
+  margin: 0 5px 0 0;
+}
+
+.exelidoc-sheet-preview pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px Consolas, monospace;
+}
+
+.exelidoc-sheet-formula-confirm {
+  font-size: 11px;
+}
+
 .exelidoc-docs-note {
   color: #5f6368;
   font-size: 11px;

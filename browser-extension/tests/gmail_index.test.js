@@ -261,3 +261,16 @@ test("scheduled alarm is restored after startup and disconnect deletes local ind
   assert.equal(harness.data.googleDataConnected, undefined);
   assert.equal(harness.alarms.length, 0);
 });
+
+test("updating Google permissions keeps the existing local inbox index", async () => {
+  const harness = createHarness();
+  await harness.send({ type: "SCAN_GMAIL_NOW" });
+  const result = await harness.send({ type: "CONNECT_GOOGLE_DATA" });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.newConnection, false);
+  assert.equal(
+    harness.indexedDB.databases.get("exelidoc-gmail-index").size,
+    1
+  );
+});

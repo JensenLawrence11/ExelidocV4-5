@@ -64,10 +64,14 @@ function renderGmailScanStatus(connected, scan) {
 async function refreshGmailScanStatus() {
   try {
     const result = await sendRuntimeMessage({ type: "GET_GMAIL_SCAN_STATUS" });
-    document.getElementById("connect-google-btn").hidden = result.connected;
+    const authorizeButton = document.getElementById("connect-google-btn");
+    authorizeButton.hidden = false;
+    authorizeButton.textContent = result.connected
+      ? "Update Google permissions"
+      : "Connect Google email, Docs, Sheets, and Slides";
     document.getElementById("disconnect-google-btn").hidden = !result.connected;
     document.getElementById("google-status").textContent = result.connected
-      ? "Google sources are connected for this Chrome profile."
+      ? "Google access is connected. Update permissions after Exelidoc requests a new scope."
       : "Connect an account to search its email, Docs, Sheets, and Slides.";
     renderGmailScanStatus(result.connected, result.scan);
   } catch (error) {
@@ -426,9 +430,11 @@ document.getElementById("connect-google-btn").addEventListener("click", async (e
   button.disabled = true;
   googleStatus.textContent = "Waiting for Google authorization...";
   try {
-    await sendRuntimeMessage({ type: "CONNECT_GOOGLE_DATA" });
+    const result = await sendRuntimeMessage({ type: "CONNECT_GOOGLE_DATA" });
     await refreshGmailScanStatus();
-    googleStatus.textContent = "Google connected. The local inbox scan has started.";
+    googleStatus.textContent = result.newConnection
+      ? "Google connected. The local inbox scan has started."
+      : "Google permissions updated. Your existing local inbox index was kept.";
   } catch (error) {
     googleStatus.textContent = error.message;
   } finally {

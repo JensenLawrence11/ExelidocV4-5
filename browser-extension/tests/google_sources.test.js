@@ -44,6 +44,9 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
             "https://www.googleapis.com/auth/spreadsheets.readonly",
           ])
           || JSON.stringify(scopes) === JSON.stringify([
+            "https://www.googleapis.com/auth/presentations.readonly",
+          ])
+          || JSON.stringify(scopes) === JSON.stringify([
             "https://www.googleapis.com/auth/spreadsheets",
           ])
         );
@@ -139,6 +142,9 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
     }
     if (url.endsWith("/api/ai/generate-text")) {
       return jsonResponse({ generated: "This presentation is about the budget." });
+    }
+    if (url.endsWith("/api/ai/edit-range")) {
+      return jsonResponse({ correctedValues: [["Name", "New"]], notes: [] });
     }
     throw new Error(`Unexpected request: ${url}`);
   };
@@ -263,6 +269,11 @@ test("manifest schedules Gmail indexing and injects Exelidoc in Slides", () => {
     matches.includes("https://docs.google.com/presentation/*")
     && js.includes("content-scripts/slides.js")
   )));
+  assert.ok(manifest.content_scripts.some(({ matches, js }) => (
+    matches.includes("https://docs.google.com/spreadsheets/*")
+    && js.includes("content-scripts/gsheets.js")
+  )));
+  assert.ok(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/presentations.readonly"));
 });
 
 test("Google Sheets edits recheck source values and formulas need separate confirmation", async () => {
@@ -314,6 +325,51 @@ test("Google Sheets edits recheck source values and formulas need separate confi
 test("Google Sheets apply stops when the range changed after preview", async () => {
   const harness = createHarness({
     currentSheetValues: [["Current", "=SUM(B1:B2)"], ["Old", 12]],
+  });
+
+  test("Google Sheets page can load sheet tabs and generate an edit preview", async () => {
+    const harness = createHarness();
+    const sender = { url: "https://docs.google.com/spreadsheets/d/sheet-1/edit" };
+    const info = await harness.send({
+      type: "GET_GOOGLE_SHEET_INFO",
+      spreadsheetId: "sheet-1",
+    }, sender);
+    assert.equal(info.ok, true);
+    assert.equal(info.title, "Forecast");
+    assert.deepEqual(Array.from(info.sheets, (sheet) => sheet.title), ["Plan"]);
+
+    const result = await harness.send({
+      type: "GENERATE_GOOGLE_SHEET_EDIT",
+      snapshot: {
+        spreadsheetId: "sheet-1",
+        sheetTitle: "Plan",
+        range: "A1:B1",
+        values: [["Name", "Old"]],
+      },
+      instruction: "Change Old to New",
+    }, sender);
+    assert.equal(result.ok, true);
+    assert.deepEqual(Array.from(result.data.correctedValues[0]), ["Name", "New"]);
+    const request = harness.requests.find(({ url }) => url.endsWith("/api/ai/edit-range"));
+    const body = JSON.parse(request.options.body);
+    assert.deepEqual(body.source_refs, [{
+      provider: "google",
+      kind: "google_spreadsheet",
+      id: "sheet-1",
+    }]);
+  });
+
+  test("Google Sheets page messages cannot target a different spreadsheet", async () => {
+    const harness = createHarness();
+    const response = await harness.send({
+      type: "GET_GOOGLE_SHEET_INFO",
+      spreadsheetId: "sheet-1",
+    }, {
+      url: "https://docs.google.com/spreadsheets/d/other-sheet/edit",
+    });
+    assert.equal(response.ok, false);
+    assert.match(response.error, /could not be verified/i);
+    assert.equal(harness.requests.length, 0);
   });
   const loaded = await harness.send({
     type: "READ_GOOGLE_SHEET_EDIT_RANGE",
