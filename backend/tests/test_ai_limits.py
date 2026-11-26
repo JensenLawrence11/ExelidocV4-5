@@ -1,6 +1,11 @@
 from unittest.mock import patch
 
-from services.ai_service import analyze_spreadsheet_range, analyze_text, generate_text
+from services.ai_service import (
+    MAX_CONTEXT_CHARS,
+    analyze_spreadsheet_range,
+    analyze_text,
+    generate_text,
+)
 
 
 def test_large_text_does_not_call_provider():
@@ -27,4 +32,17 @@ def test_large_range_does_not_call_provider():
 
     assert result["error"] == "Selected range is too large to analyze"
     assert result["correctedValues"] is values
+    call_provider.assert_not_called()
+
+
+def test_oversized_reference_context_does_not_call_provider():
+    context = "x" * (MAX_CONTEXT_CHARS + 1)
+
+    with patch("services.ai_service._call_gemini") as call_provider:
+        assert analyze_text("text", context=context)["error"] == "Reference context is too large to analyze"
+        assert generate_text("question", context=context)["error"] == "Reference context is too large to process"
+        assert analyze_spreadsheet_range([["text"]], context=context)["error"] == (
+            "Reference context is too large to analyze"
+        )
+
     call_provider.assert_not_called()

@@ -48,12 +48,52 @@
       <p id="billing-status" role="status" aria-live="polite"></p>
     </section>
 
+    <section id="sources-section" hidden>
+      <h2>Search Google sources</h2>
+      <p class="plans-note">Search happens only when you ask. Review and select email, Docs, Sheets, or Slides results before sending their contents to Gemini.</p>
+      <button id="connect-google-btn" type="button">Connect Google email, Docs, and Sheets</button>
+      <button id="disconnect-google-btn" class="secondary-btn" type="button" hidden>Disconnect Google access</button>
+      <p id="google-status" class="plans-note" role="status" aria-live="polite"></p>
+      <label for="google-search-input">Search query</label>
+      <input id="google-search-input" type="search" maxlength="200" placeholder="Search email, Docs, Sheets, and Slides" />
+      <button id="google-search-btn" type="button">Search connected sources</button>
+      <div id="google-results" aria-live="polite"></div>
+      <section id="google-sheet-editor" hidden>
+        <h3 id="google-sheet-editor-title">Edit spreadsheet cells</h3>
+        <p class="plans-note">Load a range to preview changes. Only the displayed cells are sent to Gemini. Nothing is written until you approve the preview. Formula changes need a separate confirmation.</p>
+        <label for="google-sheet-tab">Sheet tab</label>
+        <select id="google-sheet-tab"></select>
+        <label for="google-sheet-range">Cell range (maximum 2,500 cells)</label>
+        <input id="google-sheet-range" type="text" value="A1:Z90" maxlength="24" />
+        <button id="load-google-sheet-range" type="button">Load range for editing</button>
+        <div id="google-sheet-edit-controls" hidden>
+          <label for="google-sheet-instruction">What should change?</label>
+          <textarea id="google-sheet-instruction" maxlength="10000" placeholder="e.g. Rename the column headers and correct the Q2 forecast"></textarea>
+          <button id="preview-google-sheet-edit" type="button">Generate edit preview</button>
+        </div>
+        <div id="google-sheet-preview-section" hidden>
+          <pre id="google-sheet-preview"></pre>
+          <label id="confirm-google-formula-label" hidden>
+            <input id="confirm-google-formula-changes" type="checkbox" />
+            I reviewed and approve the formula changes shown above.
+          </label>
+          <button id="apply-google-sheet-edit" type="button" disabled>Apply approved changes</button>
+          <button id="discard-google-sheet-edit" class="secondary-btn" type="button">Discard preview</button>
+        </div>
+        <p id="google-sheet-edit-status" class="plans-note" role="status" aria-live="polite"></p>
+      </section>
+      <label for="source-question-input">Ask about selected sources</label>
+      <textarea id="source-question-input" maxlength="10000" placeholder="e.g. Summarize the matching emails and documents"></textarea>
+      <button id="ask-sources-btn" type="button" disabled>Ask AI about selected sources</button>
+      <div id="source-answer" role="status" aria-live="polite"></div>
+    </section>
+
     <section id="history-section" hidden>
       <div class="history-heading">
         <h2>Recent history</h2>
         <button id="refresh-history-btn" type="button" aria-label="Refresh history" title="Refresh history">↻</button>
       </div>
-      <p class="plans-note">Prompts and AI replies are saved to your account and shared with linked apps. You can clear them here.</p>
+      <p class="plans-note">Only action metadata, timestamps, and safe source links are saved. AI prompts and replies are not kept in Exelidoc history.</p>
       <div id="history-list" aria-live="polite"></div>
       <button id="load-more-history-btn" class="secondary-btn" type="button" hidden>Load older</button>
       <button id="clear-history-btn" class="secondary-btn" type="button">Clear history</button>

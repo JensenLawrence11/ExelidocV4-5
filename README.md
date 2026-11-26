@@ -97,21 +97,32 @@ Checkout when Render is configured for live mode. Its Stripe mode comes from
 Render, not the local `backend/.env`. Treat checkout links opened from this
 extension as live purchases.
 
-#### Google Docs API setup
+#### Google account access
 
-The Chrome extension edits Docs through the Google Docs API. The manifest's
-`oauth2` section contains the Chrome Extension OAuth client ID and the
-`https://www.googleapis.com/auth/documents` scope. In Google Cloud, enable the
-Google Docs API and register the published Chrome Web Store extension ID on that
-OAuth client. For unpacked development, register its separate extension ID with
-a development OAuth client. The extension requests Google Docs access when the user generates a preview. Google
-OAuth consent configuration and any required verification must be completed
-before publishing this permission. Exelidoc reads the full plain-text document
-and shows a proposed replacement for review before writing anything. Applying
-the preview replaces the full document text; original formatting is not
-preserved. Documents containing tables or embedded objects are rejected without
-changes. Writes and Undo are guarded by the Docs revision, so an edit made
-after a preview stops the operation instead of being overwritten.
+The extension uses Chrome OAuth for on-demand Gmail, Drive, Docs, and Sheets
+access. In Google Cloud, enable the Gmail API, Drive API, Google Docs API,
+Google Sheets API, and Google Slides API. Register the published Chrome Web Store extension ID on its
+OAuth client; register the separate unpacked extension ID on a development
+OAuth client. Configure the OAuth consent screen and complete Google's required
+verification before publishing the Gmail, Drive, and spreadsheet permissions.
+The user connects a Google account in the extension. Searching is initiated
+only when requested, and source contents are sent to Gemini only for results
+the user selects. Selected source links and action metadata may be saved, but
+not the prompts, source text, or AI responses.
+
+Google Docs edits use a reviewed full-text replacement and reject documents
+containing unsupported tables or embedded objects. Google Sheets edits require
+a separately requested write permission: users load a cell range, review the
+proposed cell-by-cell changes, and approve before applying. Formula changes
+require an additional checkbox and confirmation. Spreadsheet edits re-read the
+range before writing and stop if it changed after the preview. Neither flow
+sends email messages; approved edits write only to the reviewed document or
+cells.
+
+The connected-account search flow currently covers Google only. Microsoft
+Graph search across Outlook mail and OneDrive/Office files is not implemented;
+the Office add-in continues to work with the active Office document.
+
 The checked-in manifest currently uses the unpacked development client
 `733957481846-72v784csg244sum7vrthd2j10cdg29am.apps.googleusercontent.com`.
 Before preparing a Web Store package, change it to the published extension's
@@ -155,6 +166,12 @@ $10 USD calendar-month spend ceiling using Supabase; run
 `backend/supabase/migration_ai_monthly_budget.sql` before deploying this version.
 The cap applies to requests through this backend only. Keep the Gemini key
 restricted to the Gemini API and do not reuse it elsewhere.
+
+Exelidoc history stores action metadata, timestamps, and validated source links
+only; it does not retain prompts or AI responses. Before deploying that behavior,
+run `backend/supabase/migration_history_metadata_only.sql` in Supabase. It clears
+previously saved prompt/response content and adds a database constraint to prevent
+future content from being stored in those history fields.
 
 ### Stripe paid plans
 
@@ -208,7 +225,7 @@ Install `pytest` in the active development environment if it is not already
 available. Run the extension service-worker tests with:
 
 ```powershell
-node --test browser-extension\tests\background.test.js
+node --test browser-extension\tests\*.test.js
 ```
 
 

@@ -1,6 +1,7 @@
 let activePanel = null;
 let activeBox = null;
 let preEditSnapshot = null;
+let pendingPreview = null;
 
 function captureComposeSnapshot(box) {
   if (!box) return null;
@@ -70,6 +71,7 @@ function setActiveBox(box) {
 
   if (!sameBox) {
     preEditSnapshot = null;
+    pendingPreview = null;
   }
 
   if (!activePanel) activePanel = createExelidocPanel();
@@ -92,6 +94,14 @@ function createExelidocPanel() {
     <div class="exelidoc-panel-header">Exelidoc</div>
     <textarea class="exelidoc-query" placeholder="e.g. make this more formal, fix grammar, shorten it... or write a new email from scratch"></textarea>
     <button class="exelidoc-submit">Ask</button>
+    <section class="exelidoc-docs-preview" hidden>
+      <label>Proposed email draft</label>
+      <textarea class="exelidoc-docs-preview-text" readonly></textarea>
+      <div class="exelidoc-docs-preview-actions">
+        <button class="exelidoc-docs-apply" type="button">Apply to draft</button>
+        <button class="exelidoc-docs-discard" type="button">Discard</button>
+      </div>
+    </section>
     <button class="exelidoc-undo" hidden>Undo</button>
     <div class="exelidoc-status"></div>
     <details class="exelidoc-history">
@@ -108,10 +118,14 @@ function createExelidocPanel() {
   const submitEl = panel.querySelector(".exelidoc-submit");
   const undoEl = panel.querySelector(".exelidoc-undo");
   const statusEl = panel.querySelector(".exelidoc-status");
+  const previewEl = panel.querySelector(".exelidoc-docs-preview");
+  const previewTextEl = panel.querySelector(".exelidoc-docs-preview-text");
+  const applyEl = panel.querySelector(".exelidoc-docs-apply");
+  const discardEl = panel.querySelector(".exelidoc-docs-discard");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
-    : { selectedIds: () => [], refresh: () => {} };
+    : { refresh: () => {} };
   if (!window.ExelidocHistory) {
     panel.querySelector(".exelidoc-history-status").textContent = "History helper not loaded. Reload Exelidoc from its updated extension folder.";
   }
@@ -146,17 +160,20 @@ function createExelidocPanel() {
   });
 
   submitEl.addEventListener("click", () => {
-    console.log("Exelidoc: Ask clicked", { activeBox, query: queryEl.value });
     if (!activeBox) return;
     const instruction = queryEl.value.trim();
     const text = (activeBox.innerText || "").trim();
-    if (!instruction) { console.log("Exelidoc: empty instruction", { instruction, text }); return; }
+    if (!instruction) return;
+    const requestedBox = activeBox;
+    const originalSnapshot = captureComposeSnapshot(requestedBox);
 
     statusEl.textContent = "Thinking...";
     submitEl.disabled = true;
+    pendingPreview = null;
+    previewEl.hidden = true;
 
     chrome.runtime.sendMessage(
-      { type: "ANALYZE_TEXT", text, instruction, historyIds: history.selectedIds() },
+      { type: "ANALYZE_TEXT", text, instruction },
       (response) => {
         submitEl.disabled = false;
         if (chrome.runtime.lastError) {
@@ -174,22 +191,54 @@ function createExelidocPanel() {
           return;
         }
         history.refresh();
-        if (!activeBox) return; // user switched away while waiting
+        if (activeBox !== requestedBox || !document.body.contains(requestedBox)) return;
 
-        statusEl.textContent = "";
-        const suggestions = Array.isArray(response.data.suggestions) ? response.data.suggestions : [];
-        const corrected = response.data.corrected || (suggestions[0] && suggestions[0].revised) || text;
+        const corrected = response.data.corrected;
 
         if (!corrected || corrected === text) {
           statusEl.textContent = "No changes suggested.";
           return;
         }
 
-        preEditSnapshot = captureComposeSnapshot(activeBox);
-        setComposeText(activeBox, corrected);
-        undoEl.hidden = false;
+        pendingPreview = {
+          box: requestedBox,
+          originalSnapshot,
+          correctedText: corrected,
+        };
+        previewTextEl.value = corrected;
+        previewEl.hidden = false;
+        statusEl.textContent = "Review the proposed draft. Your email has not been changed.";
       }
     );
+  });
+
+  applyEl.addEventListener("click", () => {
+    if (!pendingPreview || activeBox !== pendingPreview.box || !document.body.contains(pendingPreview.box)) {
+      statusEl.textContent = "The compose window changed. Generate a new preview before applying.";
+      return;
+    }
+
+    const currentText = pendingPreview.box.textContent || pendingPreview.box.innerText || "";
+    if (currentText !== pendingPreview.originalSnapshot.text) {
+      statusEl.textContent = "The draft changed after the preview. Generate a new preview before applying.";
+      pendingPreview = null;
+      previewEl.hidden = true;
+      return;
+    }
+
+    preEditSnapshot = pendingPreview.originalSnapshot;
+    setComposeText(pendingPreview.box, pendingPreview.correctedText);
+    pendingPreview = null;
+    previewEl.hidden = true;
+    undoEl.hidden = false;
+    statusEl.textContent = "Draft updated. It has not been sent.";
+  });
+
+  discardEl.addEventListener("click", () => {
+    pendingPreview = null;
+    previewTextEl.value = "";
+    previewEl.hidden = true;
+    statusEl.textContent = "Preview discarded. Your draft was not changed.";
   });
 
   undoEl.addEventListener("click", () => {
@@ -209,11 +258,10 @@ function resetPanelState(panel) {
   panel.querySelector(".exelidoc-query").value = "";
   panel.querySelector(".exelidoc-status").textContent = "";
   panel.querySelector(".exelidoc-undo").hidden = true;
+  panel.querySelector(".exelidoc-docs-preview").hidden = true;
+  panel.querySelector(".exelidoc-docs-preview-text").value = "";
+  pendingPreview = null;
   panel.dataset.userMoved = "false";
-}
-
-function applyEditToBox(box, corrected) {
-  setComposeText(box, corrected);
 }
 
 const observer = new MutationObserver(() => {

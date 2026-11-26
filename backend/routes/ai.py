@@ -5,35 +5,44 @@ never touch the AI provider directly -- the API key stays server-side.
 """
 from flask import Blueprint, request, jsonify, g
 
-from services.ai_service import AIServiceError, analyze_text, analyze_spreadsheet_range, generate_text
-from services.history_service import build_selected_context, save_conversation
+from services.ai_service import (
+    MAX_CONTEXT_CHARS,
+    AIServiceError,
+    analyze_text,
+    edit_spreadsheet_range,
+    analyze_spreadsheet_range,
+    generate_text,
+)
+from services.history_service import save_conversation
 from services.user_service import log_ai_usage
 from utils.auth_decorator import require_subscription
 
 ai_bp = Blueprint("ai", __name__)
 
 
-def _save_history(action, prompt, result):
-    if result.get("error"):
-        return
+def _save_history(action):
     try:
         data = request.get_json(silent=True) or {}
         save_conversation(
             g.user["id"],
             data.get("client", "unknown"),
             action,
-            prompt,
-            dict(result),
+            data.get("source_url"),
+            data.get("source_urls"),
         )
     except Exception as e:
         print(f"{action}: save_conversation failed -- {e}")
 
 
-def _get_selected_context(data):
-    history_ids = data.get("history_ids", [])
-    if not isinstance(history_ids, list):
-        raise ValueError("history_ids must be a list")
-    return build_selected_context(g.user["id"], history_ids)
+def _get_request_context(data):
+    context = data.get("context", "")
+    if context is None:
+        return ""
+    if not isinstance(context, str):
+        raise ValueError("Reference context must be text")
+    if len(context) > MAX_CONTEXT_CHARS:
+        raise ValueError("Reference context is too large")
+    return context
 
 
 def _service_error_response(result):
@@ -61,9 +70,9 @@ def generate_text_route():
         return jsonify(error="No prompt provided"), 400
 
     try:
-        context = _get_selected_context(data)
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+        context = _get_request_context(data)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
 
     try:
         result = generate_text(prompt, context=context)
@@ -72,7 +81,7 @@ def generate_text_route():
     error_response = _service_error_response(result)
     if error_response:
         return error_response
-    _save_history("generate-text", prompt, result)
+    _save_history("generate-text")
     try:
         log_ai_usage(g.user["id"], "generate-text")
     except Exception as e:
@@ -100,18 +109,18 @@ def analyze_text_route():
         return jsonify(error="No text provided"), 400
 
     try:
-        context = _get_selected_context(data)
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+        context = _get_request_context(data)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
 
     try:
-        result = analyze_text(text, instruction, context=context)
+        result = analyze_text(text, instruction, context=context or None)
     except AIServiceError as error:
         return jsonify(error=str(error)), error.status_code
     error_response = _service_error_response(result)
     if error_response:
         return error_response
-    _save_history("analyze-text", instruction or "Analyze selected text", result)
+    _save_history("analyze-text")
     try:
         log_ai_usage(g.user["id"], "analyze-text")
     except Exception as e:
@@ -138,22 +147,68 @@ def analyze_range_route():
         return jsonify(error="Range values must be a 2D array"), 400
 
     try:
-        context = _get_selected_context(data)
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+        context = _get_request_context(data)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
 
     try:
-        result = analyze_spreadsheet_range(values, context=context)
+        result = analyze_spreadsheet_range(values, context=context or None)
     except AIServiceError as error:
         return jsonify(error=str(error)), error.status_code
     error_response = _service_error_response(result)
     if error_response:
         return error_response
-    _save_history("analyze-range", "Clean up selected Excel range", result)
+    _save_history("analyze-range")
     try:
         log_ai_usage(g.user["id"], "analyze-range")
     except Exception as e:
         print(f"analyze_range_route: log_ai_usage failed -- {e}")
+    result["remaining_requests"] = g.remaining_requests
+    result["tier"] = g.user.get("tier")
+    return jsonify(result)
+
+
+@ai_bp.post("/edit-range")
+@require_subscription
+def edit_range_route():
+    """Return a reviewable proposal for editing a spreadsheet cell range."""
+    data = request.get_json(silent=True) or {}
+    values = data.get("values")
+    instruction = data.get("instruction", "")
+    if (
+        not isinstance(values, list)
+        or not values
+        or any(not isinstance(row, list) or not row for row in values)
+    ):
+        return jsonify(error="Range values must be a non-empty 2D array"), 400
+    if any(len(row) != len(values[0]) for row in values):
+        return jsonify(error="Range values must have the same number of cells in every row"), 400
+    if any(
+        value is not None and not isinstance(value, (str, int, float, bool))
+        for row in values
+        for value in row
+    ):
+        return jsonify(error="Spreadsheet cells must be text, numbers, booleans, or empty"), 400
+    if not isinstance(instruction, str) or not instruction.strip():
+        return jsonify(error="Enter an instruction for the spreadsheet edit"), 400
+
+    try:
+        context = _get_request_context(data)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+    try:
+        result = edit_spreadsheet_range(values, instruction, context=context or None)
+    except AIServiceError as error:
+        return jsonify(error=str(error)), error.status_code
+    error_response = _service_error_response(result)
+    if error_response:
+        return error_response
+    _save_history("edit-range")
+    try:
+        log_ai_usage(g.user["id"], "edit-range")
+    except Exception as e:
+        print(f"edit_range_route: log_ai_usage failed -- {e}")
     result["remaining_requests"] = g.remaining_requests
     result["tier"] = g.user.get("tier")
     return jsonify(result)

@@ -85,7 +85,7 @@ function createExelidocPanel() {
   panel.querySelector(".exelidoc-close").addEventListener("click", () => setDocsPanelOpen(false));
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
-    : { selectedIds: () => [], refresh: () => {} };
+    : { refresh: () => {} };
   if (!window.ExelidocHistory) {
     panel.querySelector(".exelidoc-history-status").textContent = "History helper not loaded. Reload Exelidoc from its updated extension folder.";
   }
@@ -144,7 +144,7 @@ function createExelidocPanel() {
     console.info("Exelidoc Docs: sending Docs API request", { documentId });
 
     chrome.runtime.sendMessage(
-      { type: "ANALYZE_GOOGLE_DOC", documentId, instruction, historyIds: history.selectedIds() },
+      { type: "ANALYZE_GOOGLE_DOC", documentId, instruction },
       (response) => {
         submitEl.disabled = false;
         if (chrome.runtime.lastError) {

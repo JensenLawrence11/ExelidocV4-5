@@ -1,0 +1,271 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+const vm = require("node:vm");
+const { TextDecoder } = require("node:util");
+
+const backgroundSource = fs.readFileSync(
+  path.join(__dirname, "..", "background.js"),
+  "utf8"
+);
+
+function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 120]] } = {}) {
+  let onMessage;
+  const requests = [];
+  const gmailBody = Buffer.from("Budget review email body").toString("base64url");
+  const chrome = {
+    runtime: {
+      getManifest: () => ({ oauth2: { client_id: "test-client" } }),
+      onMessage: {
+        addListener(callback) {
+          onMessage = callback;
+        },
+      },
+      lastError: null,
+    },
+    storage: {
+      local: {
+        get: (_keys, callback) => callback({ googleDataConnected: true }),
+      },
+    },
+    identity: {
+      getAuthToken: (options, callback) => {
+        const scopes = Array.from(options.scopes);
+        assert.ok(
+          JSON.stringify(scopes) === JSON.stringify([
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/spreadsheets.readonly",
+          ])
+          || JSON.stringify(scopes) === JSON.stringify([
+            "https://www.googleapis.com/auth/spreadsheets",
+          ])
+        );
+        callback("google-token");
+      },
+    },
+  };
+  const fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), options });
+    const parsedUrl = new URL(url);
+    const pathname = decodeURIComponent(parsedUrl.pathname);
+    if (pathname.endsWith("/users/me/messages")) {
+      return jsonResponse({ messages: [{ id: "message-1" }] });
+    }
+    if (pathname.endsWith("/users/me/messages/message-1")) {
+      return jsonResponse({
+        id: "message-1",
+        payload: {
+          mimeType: "text/plain",
+          headers: [
+            { name: "Subject", value: "Budget review" },
+            { name: "From", value: "person@example.com" },
+            { name: "Date", value: "Mon, 1 Jan 2026 12:00:00 +0000" },
+          ],
+          body: { data: gmailBody },
+        },
+      });
+    }
+    if (pathname.endsWith("/drive/v3/files")) {
+      return jsonResponse({
+        files: [
+          {
+            id: "doc-1",
+            name: "Budget notes",
+            mimeType: "application/vnd.google-apps.document",
+            webViewLink: "https://docs.google.com/document/d/doc-1/edit",
+          },
+          {
+            id: "sheet-1",
+            name: "Forecast",
+            mimeType: "application/vnd.google-apps.spreadsheet",
+            webViewLink: "https://docs.google.com/spreadsheets/d/sheet-1/edit",
+          },
+          {
+            id: "slide-1",
+            name: "Budget presentation",
+            mimeType: "application/vnd.google-apps.presentation",
+            webViewLink: "https://docs.google.com/presentation/d/slide-1/edit",
+          },
+        ],
+      });
+    }
+    if (pathname.endsWith("/documents/doc-1")) {
+      return jsonResponse({
+        documentId: "doc-1",
+        body: {
+          content: [{
+            paragraph: {
+              elements: [{ textRun: { content: "Budget document details\n" } }],
+            },
+          }],
+        },
+      });
+    }
+    if (pathname.endsWith("/presentations/slide-1")) {
+      return jsonResponse({
+        title: "Budget presentation",
+        slides: [{
+          pageElements: [{
+            shape: {
+              text: {
+                textElements: [{ textRun: { content: "Slide summary" } }],
+              },
+            },
+          }],
+        }],
+      });
+    }
+    if (pathname.endsWith("/spreadsheets/sheet-1")) {
+      return jsonResponse({
+        properties: { title: "Forecast" },
+        sheets: [{ properties: { title: "Plan", sheetId: 123 } }],
+      });
+    }
+    if (pathname.endsWith("/spreadsheets/sheet-1/values/'Plan'!A1:Z100")) {
+      return jsonResponse({ values: currentSheetValues });
+    }
+    if (pathname.endsWith("/spreadsheets/sheet-1/values/'Plan'!A1:B2")) {
+      return jsonResponse({ values: currentSheetValues });
+    }
+    if (pathname.endsWith("/spreadsheets/sheet-1:batchUpdate")) {
+      return jsonResponse({ spreadsheetId: "sheet-1" });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  vm.runInNewContext(backgroundSource, {
+    chrome,
+    fetch,
+    URL,
+    URLSearchParams,
+    TextDecoder,
+    Uint8Array,
+    atob: (value) => Buffer.from(value, "base64").toString("binary"),
+    console: { info() {}, warn() {}, error() {} },
+    encodeURIComponent,
+    JSON,
+    Promise,
+    Error,
+    String,
+    Array,
+    Number,
+  });
+
+  return {
+    requests,
+    send(message) {
+      return new Promise((resolve) => {
+        assert.equal(onMessage(message, {}, resolve), true);
+      });
+    },
+  };
+}
+
+function jsonResponse(data) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => data,
+  };
+}
+
+test("on-demand Google search reads email, Docs, and Sheets without storing tokens", async () => {
+  const harness = createHarness();
+  const response = await harness.send({
+    type: "SEARCH_GOOGLE_SOURCES",
+    query: "budget forecast",
+  });
+
+  assert.equal(response.ok, true);
+  assert.deepEqual(Array.from(response.items, (item) => item.type), [
+    "email",
+    "document",
+    "spreadsheet",
+    "presentation",
+  ]);
+  assert.match(response.items[0].content, /Budget review email body/);
+  assert.match(response.items[1].content, /Budget document details/);
+  assert.match(response.items[2].content, /Q1\t120/);
+  assert.match(response.items[3].content, /Slide summary/);
+  assert.deepEqual(Array.from(response.items[2].sheetTitles), ["Plan"]);
+  assert.ok(harness.requests.every(({ options }) => (
+    options.headers.Authorization === "Bearer google-token"
+  )));
+  assert.ok(harness.requests.every(({ url }) => !url.includes("api-key")));
+});
+
+test("Google Sheets edits recheck source values and formulas need separate confirmation", async () => {
+  const harness = createHarness({
+    currentSheetValues: [["Name", "=SUM(B1:B2)"], ["Old", 12]],
+  });
+  const loaded = await harness.send({
+    type: "READ_GOOGLE_SHEET_EDIT_RANGE",
+    spreadsheetId: "sheet-1",
+    sheetTitle: "Plan",
+    range: "A1:B2",
+  });
+  assert.equal(loaded.ok, true, loaded.error);
+  assert.deepEqual(Array.from(loaded.snapshot.values[0]), ["Name", "=SUM(B1:B2)"]);
+
+  const changedFormula = await harness.send({
+    type: "APPLY_GOOGLE_SHEET_EDIT",
+    snapshot: loaded.snapshot,
+    correctedValues: [["Name", "=SUM(B1:B3)"], ["New", 12]],
+    confirmFormulaChanges: false,
+  });
+  assert.equal(changedFormula.ok, false);
+  assert.match(changedFormula.error, /confirm/i);
+  assert.equal(
+    harness.requests.some(({ url }) => url.includes(":batchUpdate")),
+    false
+  );
+
+  const applied = await harness.send({
+    type: "APPLY_GOOGLE_SHEET_EDIT",
+    snapshot: loaded.snapshot,
+    correctedValues: [["Name", "=SUM(B1:B3)"], ["New", 12]],
+    confirmFormulaChanges: true,
+  });
+  assert.equal(applied.ok, true);
+  assert.equal(applied.updatedCells, 2);
+  assert.equal(applied.formulaChanges, 1);
+  const write = harness.requests.find(({ url }) => url.includes(":batchUpdate"));
+  const updates = JSON.parse(write.options.body).requests.map((item) => item.updateCells);
+  assert.ok(updates.every((request) => request.range.sheetId === 123));
+  assert.ok(updates.some((request) => (
+    request.rows[0].values[0].userEnteredValue.stringValue === "New"
+  )));
+  assert.ok(updates.some((request) => (
+    request.rows[0].values[0].userEnteredValue.formulaValue === "=SUM(B1:B3)"
+  )));
+});
+
+test("Google Sheets apply stops when the range changed after preview", async () => {
+  const harness = createHarness({
+    currentSheetValues: [["Current", "=SUM(B1:B2)"], ["Old", 12]],
+  });
+  const loaded = await harness.send({
+    type: "READ_GOOGLE_SHEET_EDIT_RANGE",
+    spreadsheetId: "sheet-1",
+    sheetTitle: "Plan",
+    range: "A1:B2",
+  });
+  assert.equal(loaded.ok, true, loaded.error);
+
+  const changed = await harness.send({
+    type: "APPLY_GOOGLE_SHEET_EDIT",
+    snapshot: {
+      ...loaded.snapshot,
+      values: [["Old", "=SUM(B1:B2)"], ["Old", 12]],
+    },
+    correctedValues: [["New", "=SUM(B1:B2)"], ["Old", 12]],
+  });
+  assert.equal(changed.ok, false);
+  assert.match(changed.error, /changed after the preview/i);
+  assert.equal(
+    harness.requests.some(({ url }) => url.includes(":batchUpdate")),
+    false
+  );
+});

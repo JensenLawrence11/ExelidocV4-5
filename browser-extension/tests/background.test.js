@@ -109,6 +109,11 @@ test("analysis returns a preview without writing to Google Docs", async () => {
   assert.equal(result.revisionId, "rev-1");
   const analysis = harness.requests.find(({ url }) => url.endsWith("/api/ai/analyze-text"));
   assert.equal(JSON.parse(analysis.options.body).text, "\n  Original text  \n");
+  assert.equal(
+    JSON.parse(analysis.options.body).source_url,
+    "https://docs.google.com/document/d/doc-1/edit"
+  );
+  assert.equal("history_ids" in JSON.parse(analysis.options.body), false);
   assert.equal(harness.requests.some(({ url }) => url.includes(":batchUpdate")), false);
 });
 

@@ -165,6 +165,29 @@ textarea:focus {
   box-shadow: 0 0 0 1px #2b579a;
 }
 
+#edit-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#edit-preview[hidden] {
+  display: none;
+}
+
+#edit-preview-text {
+  min-height: 120px;
+  max-height: 320px;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+.exelidoc-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .exelidoc-hint {
   color: #605e5c;
   font-size: 11px;

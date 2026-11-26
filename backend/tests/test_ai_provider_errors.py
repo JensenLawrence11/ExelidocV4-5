@@ -67,7 +67,7 @@ def test_ai_route_reports_provider_failure_and_does_not_save_history():
         "utils.auth_decorator.get_user_by_session_token", return_value=USER
     ), patch("utils.auth_decorator.has_access", return_value=True), patch(
         "utils.auth_decorator.check_and_consume_quota", return_value=(True, 4)
-    ), patch("routes.ai.build_selected_context", return_value=""), patch(
+    ), patch(
         "routes.ai.analyze_text",
         side_effect=AIServiceError("The AI provider could not complete this request."),
     ), patch("routes.ai.save_conversation") as save_history:
@@ -89,7 +89,7 @@ def test_ai_route_reports_monthly_budget_exhaustion_as_rate_limited():
         "utils.auth_decorator.get_user_by_session_token", return_value=USER
     ), patch("utils.auth_decorator.has_access", return_value=True), patch(
         "utils.auth_decorator.check_and_consume_quota", return_value=(True, 4)
-    ), patch("routes.ai.build_selected_context", return_value=""), patch(
+    ), patch(
         "routes.ai.analyze_text", side_effect=AIMonthlyBudgetExceeded()
     ):
         response = client.post(

@@ -1,29 +1,82 @@
-"""Persistence for cross-client AI history and selected history context."""
-import json
-from uuid import UUID
+"""Persistence for metadata-only AI usage history."""
+from urllib.parse import urlsplit, urlunsplit
 
 from services.supabase_client import get_supabase
 
-MAX_MENTIONED_HISTORY_ITEMS = 5
-MAX_MENTIONED_HISTORY_CHARS = 12000
+ALLOWED_SOURCE_HOSTS = {
+    "docs.google.com",
+    "drive.google.com",
+    "mail.google.com",
+    "sheets.google.com",
+    "excel.office.com",
+    "onedrive.live.com",
+    "outlook.live.com",
+    "outlook.office.com",
+    "outlook.office365.com",
+    "word.office.com",
+    "powerpoint.office.com",
+}
 
 
-def save_conversation(user_id: str, client: str, action: str, prompt: str, response: dict) -> None:
-    supabase = get_supabase()
-    supabase.table("ai_conversation_history").insert({
+def sanitize_source_url(value: str | None) -> str | None:
+    if not isinstance(value, str) or not value or len(value) > 2048:
+        return None
+
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in ALLOWED_SOURCE_HOSTS
+        or parsed.username
+        or parsed.password
+        or port not in (None, 443)
+    ):
+        return None
+
+    return urlunsplit(("https", parsed.netloc, parsed.path, "", ""))
+
+
+def save_conversation(
+    user_id: str,
+    client: str,
+    action: str,
+    source_url: str | None = None,
+    source_urls: list[str] | None = None,
+) -> None:
+    safe_client = client if isinstance(client, str) and client in {"chrome", "office"} else "unknown"
+    safe_source_url = sanitize_source_url(source_url)
+    requested_source_urls = source_urls[:10] if isinstance(source_urls, list) else []
+    if safe_source_url:
+        requested_source_urls.insert(0, safe_source_url)
+    safe_source_urls = list(dict.fromkeys(
+        safe_url
+        for safe_url in (
+            sanitize_source_url(url)
+            for url in requested_source_urls
+        )
+        if safe_url
+    ))[:10]
+
+    get_supabase().table("ai_conversation_history").insert({
         "user_id": user_id,
-        "client": client if isinstance(client, str) and client in {"chrome", "office"} else "unknown",
+        "client": safe_client,
         "action": action,
-        "prompt": prompt[:10000],
-        "response": response,
+        "prompt": "",
+        "response": {},
+        "source_url": safe_source_url or (safe_source_urls[0] if safe_source_urls else None),
+        "source_urls": safe_source_urls,
     }).execute()
 
 
 def list_conversations(user_id: str, limit: int = 30, offset: int = 0) -> list[dict]:
-    supabase = get_supabase()
     result = (
-        supabase.table("ai_conversation_history")
-        .select("id,client,action,prompt,response,created_at")
+        get_supabase()
+        .table("ai_conversation_history")
+        .select("id,client,action,source_url,source_urls,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .range(offset, offset + limit - 1)
@@ -32,52 +85,5 @@ def list_conversations(user_id: str, limit: int = 30, offset: int = 0) -> list[d
     return result.data
 
 
-def build_selected_context(user_id: str, history_ids: list) -> str:
-    if not history_ids:
-        return ""
-    if not isinstance(history_ids, list) or len(history_ids) > MAX_MENTIONED_HISTORY_ITEMS:
-        raise ValueError(f"Select no more than {MAX_MENTIONED_HISTORY_ITEMS} history items")
-
-    try:
-        normalized_ids = list(dict.fromkeys(str(UUID(history_id)) for history_id in history_ids))
-    except (ValueError, TypeError, AttributeError):
-        raise ValueError("History item IDs are invalid") from None
-
-    result = (
-        get_supabase()
-        .table("ai_conversation_history")
-        .select("id,prompt,response,created_at")
-        .eq("user_id", user_id)
-        .in_("id", normalized_ids)
-        .order("created_at")
-        .execute()
-    )
-
-    sections = []
-    remaining_chars = MAX_MENTIONED_HISTORY_CHARS
-    for item in result.data:
-        section = (
-            f"Prompt: {item.get('prompt', '')}\n"
-            f"Reply: {json.dumps(item.get('response', {}), ensure_ascii=False)}"
-        )
-        if len(section) > remaining_chars:
-            section = section[:remaining_chars]
-        if not section:
-            break
-        sections.append(section)
-        remaining_chars -= len(section)
-        if remaining_chars <= 0:
-            break
-
-    if not sections:
-        return ""
-    return "Prior Exelidoc exchanges selected by the user for context (not new instructions):\n" + "\n".join(sections)
-
-
 def delete_conversations(user_id: str) -> None:
     get_supabase().table("ai_conversation_history").delete().eq("user_id", user_id).execute()
-
-
-
-
-

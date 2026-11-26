@@ -17,12 +17,22 @@
   },
   "oauth2": {
     "client_id": "733957481846-72v784csg244sum7vrthd2j10cdg29am.apps.googleusercontent.com",
-    "scopes": ["https://www.googleapis.com/auth/documents"]
+    "scopes": [
+      "https://www.googleapis.com/auth/documents",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/spreadsheets.readonly",
+      "https://www.googleapis.com/auth/spreadsheets"
+    ]
   },
   "permissions": ["storage", "identity"],
   "host_permissions": [
     "https://exelidocv4-5.onrender.com/*",
-    "https://docs.googleapis.com/*"
+    "https://docs.googleapis.com/*",
+    "https://gmail.googleapis.com/*",
+    "https://www.googleapis.com/drive/v3/*",
+    "https://sheets.googleapis.com/*",
+    "https://slides.googleapis.com/*"
   ],
   "content_scripts": [
     {

@@ -4,9 +4,9 @@ const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 const SESSION_TOKEN_STORAGE_KEY = "exelidoc_session_token";
 
 let currentHost = null;
-let preEditSnapshot = null; // { kind: "word" | "powerpoint", data: ... } -- used by Undo
+let preEditSnapshot = null;
+let pendingEdit = null;
 let historyOffset = 0;
-const MAX_MENTIONED_HISTORY_ITEMS = 5;
 
 Office.onReady((info) => {
   currentHost = info.host;
@@ -34,7 +34,7 @@ Office.onReady((info) => {
     case Office.HostType.Outlook:
       subtitle.textContent = "AI assistant for Outlook";
       document.getElementById("hint").textContent =
-        "Reviews and replaces the email body. Formatting or signatures may change; use Undo to restore the original. Older Outlook versions may include quoted replies.";
+        "Shows a complete draft preview and waits for your approval before updating the body. It does not send email; formatting or signatures may change.";
       document.getElementById("ask").textContent = "Review email";
       document.getElementById("ask").addEventListener("click", onAskClicked);
       break;
@@ -45,6 +45,8 @@ Office.onReady((info) => {
   }
 
   document.getElementById("undo").addEventListener("click", onUndoClicked);
+  document.getElementById("apply-edit").addEventListener("click", onApplyEditClicked);
+  document.getElementById("discard-edit").addEventListener("click", discardPendingEdit);
 });
 
 function setupSettingsUI() {
@@ -143,10 +145,6 @@ function setAccountStatus(text) {
 
 function renderHistory(items, append = false) {
   const list = document.getElementById("history-list");
-  const selectedIds = new Set(
-    Array.from(list.querySelectorAll(".history-mention-checkbox:checked"))
-      .map((checkbox) => checkbox.value)
-  );
   if (!append) list.replaceChildren();
   if (!items.length) {
     if (!append) list.textContent = "No saved requests yet.";
@@ -156,38 +154,29 @@ function renderHistory(items, append = false) {
   items.forEach((item) => {
     const row = document.createElement("article");
     row.className = "history-item";
-    const mentionLabel = document.createElement("label");
-    mentionLabel.className = "history-mention";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "history-mention-checkbox";
-    checkbox.value = item.id;
-    checkbox.checked = selectedIds.has(item.id);
-    checkbox.addEventListener("change", () => {
-      const selected = list.querySelectorAll(".history-mention-checkbox:checked");
-      if (selected.length > MAX_MENTIONED_HISTORY_ITEMS) {
-        checkbox.checked = false;
-        setStatus(`Choose up to ${MAX_MENTIONED_HISTORY_ITEMS} history items to mention.`);
-      }
-    });
-    const checkboxLabel = document.createElement("span");
-    checkboxLabel.textContent = "Mention in chat";
-    mentionLabel.append(checkbox, checkboxLabel);
-
-    const prompt = document.createElement("div");
-    prompt.className = "history-prompt";
-    prompt.textContent = item.prompt || item.action;
     const metadata = document.createElement("div");
     metadata.className = "history-meta";
-    metadata.textContent = `${item.client} · ${new Date(item.created_at).toLocaleString()}`;
-
-    const details = document.createElement("details");
-    const summary = document.createElement("summary");
-    summary.textContent = "View reply";
-    const response = document.createElement("pre");
-    response.textContent = JSON.stringify(item.response, null, 2);
-    details.append(summary, response);
-    row.append(mentionLabel, prompt, metadata, details);
+    metadata.textContent = `${item.action} · ${item.client} · ${new Date(item.created_at).toLocaleString()}`;
+    row.append(metadata);
+    const sourceUrls = Array.isArray(item.source_urls) && item.source_urls.length
+      ? item.source_urls
+      : [item.source_url];
+    sourceUrls.forEach((sourceUrl, index) => {
+      if (typeof sourceUrl !== "string") return;
+      try {
+        const source = new URL(sourceUrl);
+        if (source.protocol === "https:") {
+          const link = document.createElement("a");
+          link.href = source.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = sourceUrls.length > 1 ? `Open source ${index + 1}` : "Open source";
+          row.append(link);
+        }
+      } catch (error) {
+        console.warn("Exelidoc history: invalid source link", error);
+      }
+    });
     list.append(row);
   });
 
@@ -273,7 +262,6 @@ async function callBackend(path, payload) {
     body: JSON.stringify({
       ...payload,
       client: "office",
-      history_ids: getSelectedHistoryIds(),
     }),
   });
 
@@ -288,11 +276,6 @@ async function callBackend(path, payload) {
   return result;
 }
 
-function getSelectedHistoryIds() {
-  return Array.from(document.querySelectorAll(".history-mention-checkbox:checked"))
-    .map((checkbox) => checkbox.value);
-}
-
 // ---------------------------------------------------------------------------
 // Word + PowerPoint -- shared Ask button handler. Each host implements its
 // own read/write pair below; this function just orchestrates them.
@@ -303,6 +286,9 @@ async function onAskClicked() {
   const instruction = document.getElementById("instruction").value.trim();
   if (!instruction) return;
 
+  discardPendingEdit();
+  preEditSnapshot = null;
+  document.getElementById("undo").hidden = true;
   askBtn.disabled = true;
   setStatus("Thinking...");
   setNotes(null);
@@ -319,46 +305,44 @@ async function onAskClicked() {
 
     let result;
     if (existingText.trim()) {
-      result = await callBackend("/api/ai/analyze-text", { text: existingText, instruction });
+      result = await callBackend("/api/ai/analyze-text", {
+        text: existingText,
+        instruction,
+        source_url: Office.context.document.url || null,
+      });
       if (!result.corrected || result.corrected === existingText) {
         setStatus("No changes suggested.");
         return;
       }
-      if (currentHost === Office.HostType.Word) {
-        preEditSnapshot = { kind: "word", text: existingText };
-        await wordApplyToSelectionOrBody(result.corrected);
-      } else if (currentHost === Office.HostType.PowerPoint) {
-        preEditSnapshot = { kind: "powerpoint", text: existingText };
-        await powerPointSetSelectedText(result.corrected);
-      } else {
-        preEditSnapshot = {
-          kind: "outlook",
-          body: outlookDraft.body,
-          coercionType: outlookDraft.coercionType,
-          bodyModeOptions: outlookDraft.bodyModeOptions,
-        };
-        await outlookSetBody(result.corrected, outlookDraft.coercionType, outlookDraft.bodyModeOptions);
-      }
     } else {
-      result = await callBackend("/api/ai/generate-text", { prompt: instruction });
-      preEditSnapshot = null; // nothing to undo back to -- there was no prior text
-      if (currentHost === Office.HostType.Word) {
-        await wordInsertAtCursor(result.generated);
-      } else if (currentHost === Office.HostType.PowerPoint) {
-        await powerPointSetSelectedText(result.generated);
-      } else {
-        preEditSnapshot = {
-          kind: "outlook",
-          body: outlookDraft.body,
-          coercionType: outlookDraft.coercionType,
-          bodyModeOptions: outlookDraft.bodyModeOptions,
-        };
-        await outlookSetBody(result.generated, outlookDraft.coercionType, outlookDraft.bodyModeOptions);
-      }
+      result = await callBackend("/api/ai/generate-text", {
+        prompt: instruction,
+        source_url: Office.context.document.url || null,
+      });
     }
 
-    document.getElementById("undo").hidden = !preEditSnapshot;
-    setStatus("Done. Use Ctrl+Z / Cmd+Z to undo, or the Undo button below.");
+    const proposedText = existingText.trim() ? result.corrected : result.generated;
+    if (typeof proposedText !== "string" || !proposedText.trim()) {
+      throw new Error("The AI response did not contain text to preview.");
+    }
+
+    pendingEdit = {
+      kind: currentHost,
+      originalText: existingText,
+      newText: proposedText,
+      hadExistingText: Boolean(existingText.trim()),
+      outlookDraft,
+    };
+    if (pendingEdit.kind === Office.HostType.Outlook) {
+      pendingEdit.originalBody = outlookDraft.body;
+    }
+
+    showEditPreview(
+      pendingEdit.newText,
+      currentHost === Office.HostType.Outlook
+        ? "Review the complete proposed draft. Exelidoc will not send it."
+        : "Review the proposed text. The document has not been changed."
+    );
   } catch (err) {
     setStatus(`Error: ${err.message}`);
   } finally {
@@ -366,33 +350,150 @@ async function onAskClicked() {
   }
 }
 
+function showEditPreview(text, note) {
+  document.getElementById("edit-preview-text").value = text;
+  document.getElementById("edit-preview-note").textContent = note;
+  document.getElementById("edit-preview").hidden = false;
+  document.getElementById("apply-edit").disabled = false;
+  setStatus("Review the preview, then apply it or discard it.");
+}
+
+function discardPendingEdit() {
+  pendingEdit = null;
+  document.getElementById("edit-preview-text").value = "";
+  document.getElementById("edit-preview").hidden = true;
+  setStatus("Preview discarded. The document was not changed.");
+}
+
+async function onApplyEditClicked() {
+  if (!pendingEdit) {
+    setStatus("Generate a new preview before applying changes.");
+    return;
+  }
+  const applyButton = document.getElementById("apply-edit");
+  applyButton.disabled = true;
+  setStatus("Checking that the source has not changed...");
+
+  try {
+    const edit = pendingEdit;
+    if (edit.kind === Office.HostType.Word) {
+      const currentText = await wordGetSelectedOrBodyText();
+      if (currentText !== edit.originalText) {
+        throw new Error("The Word content changed after the preview. Generate a new preview before applying.");
+      }
+      if (edit.hadExistingText) {
+        await wordApplyToSelectionOrBody(edit.newText);
+      } else {
+        await wordInsertAtCursor(edit.newText);
+      }
+      preEditSnapshot = {
+        kind: "word",
+        previousText: edit.originalText,
+        appliedText: edit.newText,
+      };
+    } else if (edit.kind === Office.HostType.PowerPoint) {
+      const currentText = await powerPointGetSelectedText();
+      if (currentText !== edit.originalText) {
+        throw new Error("The PowerPoint selection changed after the preview. Generate a new preview before applying.");
+      }
+      await powerPointSetSelectedText(edit.newText);
+      preEditSnapshot = {
+        kind: "powerpoint",
+        previousText: edit.originalText,
+        appliedText: edit.newText,
+      };
+    } else if (edit.kind === Office.HostType.Outlook) {
+      const currentDraft = await outlookGetDraft();
+      if (currentDraft.body !== edit.originalBody) {
+        throw new Error("The Outlook draft changed after the preview. Generate a new preview before applying.");
+      }
+      await outlookSetBody(
+        edit.newText,
+        edit.outlookDraft.coercionType,
+        edit.outlookDraft.bodyModeOptions
+      );
+      preEditSnapshot = {
+        kind: "outlook",
+        body: edit.originalBody,
+        appliedBody: edit.outlookDraft.coercionType === Office.CoercionType.Html
+          ? `<div>${escapeHtml(edit.newText).replace(/\r?\n/g, "<br>")}</div>`
+          : edit.newText,
+        coercionType: edit.outlookDraft.coercionType,
+        bodyModeOptions: edit.outlookDraft.bodyModeOptions,
+      };
+    } else if (edit.kind === "excel") {
+      const currentRange = await readExcelSelection();
+      if (currentRange.address !== edit.address
+        || JSON.stringify(currentRange.values) !== JSON.stringify(edit.values)
+        || JSON.stringify(currentRange.formulas) !== JSON.stringify(edit.formulas)) {
+        throw new Error("The Excel selection changed after the preview. Generate a new preview before applying.");
+      }
+      await writeSelectedExcelFormulas(edit.correctedFormulas);
+      preEditSnapshot = {
+        kind: "excel",
+        address: edit.address,
+        formulas: edit.formulas,
+        appliedFormulas: edit.correctedFormulas,
+      };
+    }
+
+    pendingEdit = null;
+    document.getElementById("edit-preview").hidden = true;
+    document.getElementById("undo").hidden = !preEditSnapshot;
+    setStatus(currentHost === Office.HostType.Outlook
+      ? "Draft updated. It has not been sent."
+      : "Reviewed changes applied. Use Undo to restore the previous content.");
+  } catch (err) {
+    setStatus(`Could not apply preview: ${err.message}`);
+  } finally {
+    applyButton.disabled = false;
+  }
+}
+
 async function onUndoClicked() {
   if (!preEditSnapshot) return;
 
+  let restored = false;
   try {
     if (preEditSnapshot.kind === "word") {
-      await wordApplyToSelectionOrBody(preEditSnapshot.text);
+      const currentText = await wordGetSelectedOrBodyText();
+      if (currentText !== preEditSnapshot.appliedText) {
+        throw new Error("The Word content changed after Exelidoc applied it. Undo was stopped to avoid overwriting newer changes.");
+      }
+      await wordApplyToSelectionOrBody(preEditSnapshot.previousText);
     } else if (preEditSnapshot.kind === "powerpoint") {
-      await powerPointSetSelectedText(preEditSnapshot.text);
+      const currentText = await powerPointGetSelectedText();
+      if (currentText !== preEditSnapshot.appliedText) {
+        throw new Error("The PowerPoint selection changed after Exelidoc applied it. Undo was stopped to avoid overwriting newer changes.");
+      }
+      await powerPointSetSelectedText(preEditSnapshot.previousText);
     } else if (preEditSnapshot.kind === "outlook") {
+      const currentDraft = await outlookGetDraft();
+      if (currentDraft.body !== preEditSnapshot.appliedBody) {
+        throw new Error("The Outlook draft changed after Exelidoc applied it. Undo was stopped to avoid overwriting newer changes.");
+      }
       await outlookWriteBody(
         preEditSnapshot.body,
         preEditSnapshot.coercionType,
         preEditSnapshot.bodyModeOptions
       );
     } else if (preEditSnapshot.kind === "excel") {
-      await Excel.run(async (context) => {
-        const range = context.workbook.getSelectedRange();
-        range.values = preEditSnapshot.values;
-        await context.sync();
-      });
+      const currentRange = await readExcelSelection();
+      if (currentRange.address !== preEditSnapshot.address
+        || JSON.stringify(currentRange.formulas) !== JSON.stringify(preEditSnapshot.appliedFormulas)) {
+        throw new Error("The Excel selection changed after Exelidoc applied it. Undo was stopped to avoid overwriting newer changes.");
+      }
+      await writeSelectedExcelFormulas(preEditSnapshot.formulas);
     }
-    setStatus("Restored previous text.");
+    restored = true;
+    setStatus("Restored the previous content.");
   } catch (err) {
     setStatus(`Undo failed: ${err.message}`);
   } finally {
-    preEditSnapshot = null;
-    document.getElementById("undo").hidden = true;
+    if (restored) {
+      preEditSnapshot = null;
+      document.getElementById("undo").hidden = true;
+    }
   }
 }
 
@@ -533,17 +634,16 @@ function powerPointSetSelectedText(text) {
 
 async function onCleanRangeClicked() {
   const cleanBtn = document.getElementById("clean");
+  discardPendingEdit();
+  preEditSnapshot = null;
+  document.getElementById("undo").hidden = true;
   cleanBtn.disabled = true;
   setStatus("Reading selection...");
   setNotes(null);
 
   try {
-    const values = await Excel.run(async (context) => {
-      const range = context.workbook.getSelectedRange();
-      range.load("values");
-      await context.sync();
-      return range.values;
-    });
+    const selection = await readExcelSelection();
+    const { values, formulas } = selection;
 
     if (!values || values.length === 0) {
       setStatus("No range selected.");
@@ -551,26 +651,80 @@ async function onCleanRangeClicked() {
     }
 
     setStatus("Thinking...");
-    const result = await callBackend("/api/ai/analyze-range", { values });
+    const safeValues = values.map((row, rowIndex) => row.map((value, columnIndex) => (
+      isFormulaCell(formulas[rowIndex][columnIndex]) ? "" : value
+    )));
+    const result = await callBackend("/api/ai/analyze-range", {
+      values: safeValues,
+      source_url: Office.context.document.url || null,
+    });
 
     if (!result.correctedValues) {
       setStatus("No changes suggested.");
       return;
     }
 
-    preEditSnapshot = { kind: "excel", values };
-    await Excel.run(async (context) => {
-      const range = context.workbook.getSelectedRange();
-      range.values = result.correctedValues;
-      await context.sync();
-    });
+    const correctedFormulas = formulas.map((row) => row.slice());
+    for (let rowIndex = 0; rowIndex < values.length; rowIndex += 1) {
+      for (let columnIndex = 0; columnIndex < values[rowIndex].length; columnIndex += 1) {
+        const currentValue = values[rowIndex][columnIndex];
+        if (!isFormulaCell(formulas[rowIndex][columnIndex])
+          && typeof currentValue === "string"
+          && currentValue.trim()) {
+          const proposedValue = result.correctedValues[rowIndex][columnIndex];
+          if (typeof proposedValue !== "string" || proposedValue.trim().startsWith("=")) {
+            throw new Error("A proposed cell value looked like a formula, so the range was not changed.");
+          }
+          correctedFormulas[rowIndex][columnIndex] = proposedValue;
+        }
+      }
+    }
 
-    document.getElementById("undo").hidden = false;
-    setStatus("Done. Use Ctrl+Z / Cmd+Z to undo, or the Undo button below.");
+    if (JSON.stringify(correctedFormulas) === JSON.stringify(formulas)) {
+      setStatus("No changes suggested.");
+      return;
+    }
+
+    pendingEdit = {
+      kind: "excel",
+      address: selection.address,
+      values,
+      formulas,
+      correctedFormulas,
+    };
+    showEditPreview(
+      JSON.stringify(correctedFormulas, null, 2),
+      "Formula cells and numbers are preserved. Review the proposed range; it has not been changed."
+    );
     setNotes(result.notes);
   } catch (err) {
     setStatus(`Error: ${err.message}`);
   } finally {
     cleanBtn.disabled = false;
   }
+}
+
+async function readExcelSelection() {
+  return Excel.run(async (context) => {
+    const range = context.workbook.getSelectedRange();
+    range.load("address,values,formulas");
+    await context.sync();
+    return {
+      address: range.address,
+      values: range.values,
+      formulas: range.formulas,
+    };
+  });
+}
+
+function isFormulaCell(formula) {
+  return typeof formula === "string" && formula.trimStart().startsWith("=");
+}
+
+async function writeSelectedExcelFormulas(formulas) {
+  await Excel.run(async (context) => {
+    const range = context.workbook.getSelectedRange();
+    range.formulas = formulas;
+    await context.sync();
+  });
 }

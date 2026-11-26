@@ -1,6 +1,5 @@
 (() => {
   const PAGE_SIZE = 30;
-  const MAX_MENTIONED_ITEMS = 5;
 
   function sendMessage(message) {
     return new Promise((resolve) => {
@@ -14,12 +13,6 @@
     });
   }
 
-  function responseText(response) {
-    if (response && typeof response.generated === "string") return response.generated;
-    if (response && typeof response.corrected === "string") return response.corrected;
-    return JSON.stringify(response, null, 2);
-  }
-
   function mount(panel) {
     const drawer = panel.querySelector(".exelidoc-history");
 
@@ -31,10 +24,6 @@
     let loading = false;
 
     function render(items, append) {
-      const selectedIds = new Set(
-        Array.from(drawer.querySelectorAll(".exelidoc-history-mention input:checked"))
-          .map((checkbox) => checkbox.value)
-      );
       if (!append) list.replaceChildren();
       if (!items.length && !append) {
         list.textContent = "No saved requests yet.";
@@ -44,44 +33,31 @@
       items.forEach((item) => {
         const row = document.createElement("article");
         row.className = "exelidoc-history-item";
-        row.dataset.historyId = item.id;
-
-        const mention = document.createElement("label");
-        mention.className = "exelidoc-history-mention";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.value = item.id;
-        checkbox.checked = selectedIds.has(item.id);
-        checkbox.addEventListener("change", () => {
-          const selected = drawer.querySelectorAll(".exelidoc-history-mention input:checked");
-          if (selected.length > MAX_MENTIONED_ITEMS) {
-            checkbox.checked = false;
-            status.textContent = `Choose up to ${MAX_MENTIONED_ITEMS} history items.`;
-          } else {
-            status.textContent = "";
-          }
-        });
-        const mentionText = document.createElement("span");
-        mentionText.textContent = "Mention in chat";
-        mention.append(checkbox, mentionText);
-
-        const prompt = document.createElement("div");
-        prompt.className = "exelidoc-history-prompt";
-        prompt.textContent = item.prompt || item.action;
-
         const metadata = document.createElement("div");
         metadata.className = "exelidoc-history-meta";
-        metadata.textContent = `${item.client} · ${new Date(item.created_at).toLocaleString()}`;
+        metadata.textContent = `${item.action} · ${item.client} · ${new Date(item.created_at).toLocaleString()}`;
 
-        const exchange = document.createElement("details");
-        exchange.className = "exelidoc-history-exchange";
-        const exchangeSummary = document.createElement("summary");
-        exchangeSummary.textContent = "View reply";
-        const reply = document.createElement("pre");
-        reply.textContent = responseText(item.response);
-        exchange.append(exchangeSummary, reply);
+        row.append(metadata);
 
-        row.append(mention, prompt, metadata, exchange);
+        const sourceUrls = Array.isArray(item.source_urls) && item.source_urls.length
+          ? item.source_urls
+          : [item.source_url];
+        sourceUrls.forEach((sourceUrl, index) => {
+          if (typeof sourceUrl !== "string") return;
+          try {
+            const source = new URL(sourceUrl);
+            if (source.protocol === "https:") {
+              const link = document.createElement("a");
+              link.href = source.href;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = sourceUrls.length > 1 ? `Open source ${index + 1}` : "Open source";
+              row.append(link);
+            }
+          } catch (error) {
+            console.warn("Exelidoc history: invalid source link", error);
+          }
+        });
         list.appendChild(row);
       });
     }
@@ -112,15 +88,7 @@
     });
     moreButton.addEventListener("click", () => load(true));
 
-    return {
-      selectedIds() {
-        return Array.from(drawer.querySelectorAll(".exelidoc-history-mention input:checked"))
-          .map((checkbox) => checkbox.value);
-      },
-      refresh() {
-        if (drawer.open) load();
-      },
-    };
+    return { refresh() { if (drawer.open) load(); } };
   }
 
   window.ExelidocHistory = { mount };
