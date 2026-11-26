@@ -1,5 +1,6 @@
 let activePanel = null;
 let docsLauncher = null;
+const EXELIDOC_LOGO_URL = chrome.runtime.getURL("icons/favicon.ico");
 
 function getCurrentDocumentId() {
   return window.location.pathname.match(/^\/document\/(?:u\/\d+\/)?d\/([\w-]+)/)?.[1] || null;
@@ -11,7 +12,7 @@ function ensureDocsLauncher() {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "exelidoc-docs-launcher";
-  button.innerHTML = '<span class="exelidoc-mark">E</span><span>Exelidoc</span>';
+  button.innerHTML = `<img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" /><span>Exelidoc</span>`;
   button.setAttribute("aria-label", "Open Exelidoc panel");
   button.setAttribute("aria-expanded", "false");
   button.setAttribute("aria-controls", "exelidoc-docs-panel");
@@ -46,7 +47,7 @@ function createExelidocPanel() {
   panel.className = "exelidoc-panel docs-mode";
   panel.id = "exelidoc-docs-panel";
   panel.innerHTML = `
-    <div class="exelidoc-panel-header"><span class="exelidoc-brand"><span class="exelidoc-mark">E</span>Exelidoc <span class="exelidoc-product-label">Docs</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
+    <div class="exelidoc-panel-header"><span class="exelidoc-brand"><img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" />Exelidoc <span class="exelidoc-product-label">Docs</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
     <textarea class="exelidoc-query" placeholder="e.g. write a section, rewrite this, make it more concise"></textarea>
     <div class="exelidoc-docs-note">Use Gmail emails as supporting context if helpful. Exelidoc will propose a full-document replacement for you to review.</div>
     <div class="exelidoc-gmail-source-picker-slot"></div>

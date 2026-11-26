@@ -414,16 +414,12 @@
 }
 
 .exelidoc-mark {
-  display: inline-grid;
+  display: block;
   width: 24px;
   height: 24px;
   flex: 0 0 24px;
-  place-items: center;
-  border-radius: 8px;
-  background: linear-gradient(145deg, #7894ff, #a486ff);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
+  border-radius: 50%;
+  object-fit: contain;
 }
 
 .exelidoc-brand {

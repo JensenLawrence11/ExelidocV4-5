@@ -3,6 +3,7 @@ let sheetLauncher = null;
 let sheetInfo = null;
 let sheetSnapshot = null;
 let sheetProposal = null;
+const EXELIDOC_LOGO_URL = chrome.runtime.getURL("icons/favicon.ico");
 
 function getCurrentSpreadsheetId() {
   return window.location.pathname.match(/^\/spreadsheets\/(?:u\/\d+\/)?d\/([\w-]+)/)?.[1] || null;
@@ -63,7 +64,7 @@ function ensureSheetLauncher() {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "exelidoc-docs-launcher";
-  button.innerHTML = '<span class="exelidoc-mark">E</span><span>Exelidoc</span>';
+  button.innerHTML = `<img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" /><span>Exelidoc</span>`;
   button.setAttribute("aria-label", "Open Exelidoc Sheets panel");
   button.setAttribute("aria-expanded", "false");
   button.addEventListener("click", async () => {
@@ -90,7 +91,7 @@ function createSheetPanel() {
   const panel = document.createElement("section");
   panel.className = "exelidoc-panel docs-mode";
   panel.innerHTML = `
-    <div class="exelidoc-panel-header"><span class="exelidoc-brand"><span class="exelidoc-mark">E</span>Exelidoc <span class="exelidoc-product-label">Sheets</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
+    <div class="exelidoc-panel-header"><span class="exelidoc-brand"><img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" />Exelidoc <span class="exelidoc-product-label">Sheets</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
     <div class="exelidoc-docs-note">Highlight cells in the sheet, then choose them for Exelidoc. Describe what to make or change. Nothing is written until you review and apply the preview.</div>
     <div class="exelidoc-gmail-source-picker-slot"></div>
     <div class="exelidoc-sheet-selection" aria-live="polite">No cells selected for Exelidoc.</div>

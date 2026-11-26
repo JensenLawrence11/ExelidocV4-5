@@ -5,13 +5,14 @@ let pendingPreview = null;
 let gmailSourcePicker = null;
 let gmailFinderPanel = null;
 let gmailFinderLauncher = null;
+const EXELIDOC_LOGO_URL = chrome.runtime.getURL("icons/favicon.ico");
 
 function ensureGmailFinder() {
   if (gmailFinderLauncher) return;
   const launcher = document.createElement("button");
   launcher.type = "button";
   launcher.className = "exelidoc-docs-launcher exelidoc-gmail-finder-launcher";
-  launcher.innerHTML = '<span class="exelidoc-mark">E</span><span>Find an email</span>';
+  launcher.innerHTML = `<img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" /><span>Find an email</span>`;
   launcher.setAttribute("aria-label", "Find an email in Gmail");
   launcher.setAttribute("aria-expanded", "false");
   launcher.setAttribute("aria-controls", "exelidoc-gmail-finder");
@@ -38,7 +39,7 @@ function createGmailFinderPanel() {
   panel.setAttribute("aria-label", "Find an email");
   panel.innerHTML = `
     <div class="exelidoc-panel-header">
-      <span class="exelidoc-brand"><span class="exelidoc-mark">E</span>Find an email <span class="exelidoc-product-label">Gmail</span></span>
+      <span class="exelidoc-brand"><img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" />Find an email <span class="exelidoc-product-label">Gmail</span></span>
       <button class="exelidoc-close" type="button" aria-label="Close email finder">&times;</button>
     </div>
     <form class="exelidoc-gmail-finder-form">
@@ -214,7 +215,7 @@ function createExelidocPanel() {
   const panel = document.createElement("div");
   panel.className = "exelidoc-panel";
   panel.innerHTML = `
-    <div class="exelidoc-panel-header"><span class="exelidoc-brand"><span class="exelidoc-mark">E</span>Exelidoc <span class="exelidoc-product-label">Gmail</span></span></div>
+    <div class="exelidoc-panel-header"><span class="exelidoc-brand"><img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" />Exelidoc <span class="exelidoc-product-label">Gmail</span></span></div>
     <textarea class="exelidoc-query" placeholder="e.g. make this more formal, fix grammar, shorten it... or write a new email from scratch"></textarea>
     <div class="exelidoc-gmail-source-picker-slot"></div>
     <button class="exelidoc-submit">Ask</button>

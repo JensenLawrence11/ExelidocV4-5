@@ -400,17 +400,12 @@ header {
 }
 
 .brand-mark {
-  display: grid;
+  display: block;
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 11px;
-  background: linear-gradient(145deg, #6888ff, #9e76f3);
-  color: #fff;
-  font-size: 17px;
-  font-weight: 800;
+  border-radius: 50%;
+  object-fit: contain;
 }
 
 header p {

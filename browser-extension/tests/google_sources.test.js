@@ -337,6 +337,12 @@ test("Google Sheets preview includes only the selected Gmail messages as context
 });
 
 test("manifest schedules Gmail indexing and injects Exelidoc in Sheets and Slides", () => {
+  assert.ok(fs.existsSync(path.join(__dirname, "..", "icons", "favicon.ico")));
+  assert.ok(manifest.web_accessible_resources.some(({ resources, matches }) => (
+    resources.includes("icons/favicon.ico")
+    && matches.includes("https://mail.google.com/*")
+    && matches.includes("https://docs.google.com/*")
+  )));
   assert.ok(manifest.permissions.includes("alarms"));
   assert.ok(manifest.content_scripts.some(({ matches, js }) => (
     matches.includes("https://docs.google.com/presentation/*")
