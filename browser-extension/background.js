@@ -2,12 +2,13 @@
 
 const BACKEND_URL = "https://exelidocv4-5.onrender.com";
 const GOOGLE_DOCS_API = "https://docs.googleapis.com/v1/documents";
+const GOOGLE_SHEETS_EDIT_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_DATA_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
-const GOOGLE_SHEETS_EDIT_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const GOOGLE_CONNECT_SCOPES = [...GOOGLE_DATA_SCOPES, GOOGLE_SHEETS_EDIT_SCOPE];
 const GOOGLE_SOURCE_LIMIT = 4;
 const GOOGLE_SOURCE_CONTENT_LIMIT = 6000;
 const GOOGLE_SHEET_EDIT_MAX_CELLS = 2500;
@@ -383,7 +384,7 @@ async function setGmailScanState(state) {
   return state;
 }
 
-function createGmailScanAlarm(delayInMinutes, periodInMinutes = 15) {
+function createGmailScanAlarm(delayInMinutes, periodInMinutes = 5) {
   chrome.alarms.create(GMAIL_SCAN_ALARM, { delayInMinutes, periodInMinutes });
 }
 
@@ -391,7 +392,7 @@ async function ensureGmailIndexScanScheduled() {
   const { googleDataConnected } = await chrome.storage.local.get("googleDataConnected");
   if (!googleDataConnected) return;
   const alarm = await chrome.alarms.get(GMAIL_SCAN_ALARM);
-  if (!alarm) createGmailScanAlarm(0.5);
+  if (!alarm || alarm.periodInMinutes !== 5) createGmailScanAlarm(0.5);
 }
 
 async function ensureGmailConnected() {
@@ -477,6 +478,68 @@ async function getGmailIndexSearchResults(query) {
     console.warn("Exelidoc Gmail: local index search failed; using Gmail search", error.message);
     return [];
   }
+}
+
+function validateGmailSourceRefs(sourceRefs) {
+  if (sourceRefs === undefined) return [];
+  if (!Array.isArray(sourceRefs) || sourceRefs.length > GOOGLE_SOURCE_LIMIT) {
+    throw new Error(`Select no more than ${GOOGLE_SOURCE_LIMIT} Gmail messages.`);
+  }
+  const uniqueRefs = new Map();
+  sourceRefs.forEach((sourceRef) => {
+    if (
+      sourceRef?.provider !== "google"
+      || sourceRef.kind !== "gmail_message"
+      || !/^[A-Za-z0-9_-]{1,256}$/.test(sourceRef.id || "")
+    ) {
+      throw new Error("A selected Gmail message could not be verified.");
+    }
+    uniqueRefs.set(sourceRef.id, {
+      provider: "google",
+      kind: "gmail_message",
+      id: sourceRef.id,
+    });
+  });
+  return Array.from(uniqueRefs.values());
+}
+
+async function getSelectedGmailContext(sourceRefs) {
+  const refs = validateGmailSourceRefs(sourceRefs);
+  if (!refs.length) return { context: "", sourceRefs: [], sources: [] };
+  const accessToken = await getGoogleAccessToken(
+    ["https://www.googleapis.com/auth/gmail.readonly"],
+    false
+  );
+  const sources = await Promise.all(refs.map((sourceRef) => (
+    getGoogleSourceForRef(sourceRef, accessToken)
+  )));
+  const context = sources.map((source) => (
+    `Email: ${source.title}\nURL: ${source.url}\n${source.content}`
+  )).join("\n\n---\n\n").slice(0, 18000);
+  return { context, sourceRefs: refs, sources };
+}
+
+async function searchGmailContext(query) {
+  if (typeof query !== "string" || !query.trim() || query.length > 200) {
+    throw new Error("Enter a Gmail search with 1 to 200 characters.");
+  }
+  const accessToken = await getGoogleAccessToken(
+    ["https://www.googleapis.com/auth/gmail.readonly"],
+    false
+  );
+  const [indexedEmails, searchedEmails] = await Promise.all([
+    getGmailIndexSearchResults(query.trim()),
+    getGmailSearchResults(query.trim(), accessToken),
+  ]);
+  const seenMessageIds = new Set();
+  return [...indexedEmails, ...searchedEmails]
+    .filter((source) => {
+      const id = source.sourceRef?.id;
+      if (id && seenMessageIds.has(id)) return false;
+      if (id) seenMessageIds.add(id);
+      return true;
+    })
+    .slice(0, GOOGLE_SOURCE_LIMIT);
 }
 
 async function fullGmailInboxScan(accessToken, state) {
@@ -655,7 +718,7 @@ async function stopGmailIndexing() {
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
-      chrome.storage.local.remove(["googleDataConnected"], resolve);
+      chrome.storage.local.remove(["googleDataConnected", "googleAccessConfigured"], resolve);
     });
   });
 }
@@ -942,6 +1005,11 @@ async function generateGoogleSheetEdit(message, sender) {
   const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
   if (!sessionToken) throw new Error("Sign in to Exelidoc from the toolbar popup first.");
   const sourceUrl = getGoogleSheetUrl(spreadsheetId);
+  const gmailContext = await getSelectedGmailContext(message.gmailSourceRefs);
+  const sourceRefs = [
+    { provider: "google", kind: "google_spreadsheet", id: spreadsheetId },
+    ...gmailContext.sourceRefs,
+  ];
   const response = await fetch(`${BACKEND_URL}/api/ai/edit-range`, {
     method: "POST",
     headers: {
@@ -951,9 +1019,10 @@ async function generateGoogleSheetEdit(message, sender) {
     body: JSON.stringify({
       values: snapshot.values,
       instruction: message.instruction,
+      context: gmailContext.context,
       source_url: sourceUrl,
-      source_urls: [sourceUrl],
-      source_refs: [{ provider: "google", kind: "google_spreadsheet", id: spreadsheetId }],
+      source_urls: [sourceUrl, ...gmailContext.sources.map((source) => source.url)],
+      source_refs: sourceRefs,
       client: "chrome",
     }),
   });
@@ -1414,12 +1483,58 @@ function handleGoogleSheetMessage(message, sender, sendResponse, operation, labe
   });
 }
 
+async function analyzeTextWithGmailContext(message, sender) {
+  const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
+  if (!sessionToken) return { ok: false, error: "no_session" };
+
+  const gmailContext = await getSelectedGmailContext(message.gmailSourceRefs);
+  const currentGmailSource = getGmailSourceRef(sender);
+  const sourceRefs = [
+    ...gmailContext.sourceRefs,
+    ...(currentGmailSource ? [currentGmailSource] : []),
+  ].filter((sourceRef, index, refs) => (
+    refs.findIndex((candidate) => candidate.id === sourceRef.id) === index
+  ));
+  const response = await fetch(`${BACKEND_URL}/api/ai/analyze-text`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-Token": sessionToken,
+    },
+    body: JSON.stringify({
+      text: message.text,
+      instruction: message.instruction,
+      context: gmailContext.context,
+      source_url: getGoogleSourceUrl(sender),
+      source_refs: sourceRefs,
+      client: "chrome",
+    }),
+  });
+  let data = {};
+  const raw = await response.text();
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch (error) {
+      data = { error: raw };
+    }
+  }
+  if (response.status === 401) return { ok: false, error: "invalid_session" };
+  if (response.status === 402) return { ok: false, error: "subscription_inactive" };
+  if (response.status === 429) return { ok: false, error: data.error || "monthly_limit_reached" };
+  if (!response.ok) return { ok: false, error: data.error || "request_failed" };
+  return { ok: true, data };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "CONNECT_GOOGLE_DATA") {
     chrome.storage.local.get(["googleDataConnected"], ({ googleDataConnected }) => {
-      getGoogleAccessToken(GOOGLE_DATA_SCOPES, true)
+      getGoogleAccessToken(GOOGLE_CONNECT_SCOPES, true)
         .then(() => new Promise((resolve) => {
-          chrome.storage.local.set({ googleDataConnected: true }, resolve);
+          chrome.storage.local.set({
+            googleDataConnected: true,
+            googleAccessConfigured: true,
+          }, resolve);
         }))
         .then(async () => {
           if (googleDataConnected) {
@@ -1451,13 +1566,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "GET_GMAIL_SCAN_STATUS") {
-    chrome.storage.local.get(["googleDataConnected", "gmailScanState"], (data) => {
-      sendResponse({
-        ok: true,
-        connected: Boolean(data.googleDataConnected),
-        scan: data.gmailScanState || null,
-      });
-    });
+    chrome.storage.local.get(
+      ["googleDataConnected", "googleAccessConfigured", "gmailScanState"],
+      (data) => {
+        sendResponse({
+          ok: true,
+          connected: Boolean(data.googleDataConnected),
+          accessConfigured: Boolean(data.googleAccessConfigured),
+          scan: data.gmailScanState || null,
+        });
+      }
+    );
     return true;
   }
 
@@ -1482,6 +1601,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch((error) => {
           console.error("Exelidoc background: Google source search failed", error.message);
           sendResponse({ ok: false, error: error.message || "Google source search failed." });
+        });
+    });
+    return true;
+  }
+
+  if (message.type === "SEARCH_GMAIL_CONTEXT") {
+    chrome.storage.local.get(["googleDataConnected"], ({ googleDataConnected }) => {
+      if (!googleDataConnected) {
+        sendResponse({ ok: false, error: "Connect Google once from the Exelidoc popup to search Gmail." });
+        return;
+      }
+      searchGmailContext(message.query)
+        .then((items) => sendResponse({ ok: true, items }))
+        .catch((error) => {
+          console.error("Exelidoc background: Gmail context search failed", error.message);
+          sendResponse({ ok: false, error: googleAuthorizationHelp(error, "Gmail") });
         });
     });
     return true;
@@ -1586,53 +1721,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "ANALYZE_TEXT") {
     console.info("Exelidoc background: analysis message received");
-    chrome.storage.local.get(["sessionToken"], ({ sessionToken }) => {
-      if (!sessionToken) {
-        console.warn("Exelidoc background: request stopped; no saved session");
-        sendResponse({ ok: false, error: "no_session" });
-        return;
-      }
-
-      console.info("Exelidoc background: posting analysis request");
-      fetch(`${BACKEND_URL}/api/ai/analyze-text`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Session-Token": sessionToken,
-        },
-        body: JSON.stringify({
-          text: message.text,
-          instruction: message.instruction,
-          source_url: getGoogleSourceUrl(sender),
-          source_refs: getGmailSourceRef(sender) ? [getGmailSourceRef(sender)] : [],
-          client: "chrome",
-        }),
-      })
-        .then(async (res) => {
-          console.info("Exelidoc background: backend responded", { status: res.status });
-          let data = {};
-          const raw = await res.text();
-          if (raw) {
-            try {
-              data = JSON.parse(raw);
-            } catch (e) {
-              data = { error: raw };
-            }
-          }
-
-          if (res.status === 401) return sendResponse({ ok: false, error: "invalid_session" });
-          if (res.status === 402) return sendResponse({ ok: false, error: "subscription_inactive" });
-          if (res.status === 429) return sendResponse({ ok: false, error: data.error || "monthly_limit_reached" });
-          if (!res.ok) return sendResponse({ ok: false, error: data.error || "request_failed" });
-
-          sendResponse({ ok: true, data });
-        })
-        .catch((err) => {
-          console.error("Exelidoc background: backend request failed", String(err));
-          sendResponse({ ok: false, error: String(err) });
-        });
-    });
-
+    analyzeTextWithGmailContext(message, sender)
+      .then(sendResponse)
+      .catch((error) => {
+        console.error("Exelidoc background: text analysis failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Text analysis failed." });
+      });
     return true;
   }
 });

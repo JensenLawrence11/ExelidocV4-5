@@ -106,22 +106,25 @@ Web Store extension ID on its OAuth client; register the separate unpacked
 extension ID on a development OAuth client. Add test users when the OAuth
 consent screen is in testing. Configure the OAuth consent screen and complete Google's required
 verification before publishing the Gmail, Drive, and spreadsheet permissions.
-The user connects a Google account in the extension. Searching is initiated
-only when requested, and source contents are sent to Gemini only for results
-the user selects. The extension also indexes all inbox messages locally every
-15 minutes while Chrome is running (up to 20,000 body characters per message);
-email contents stay in the local Chrome profile and are sent to Gemini only
-after the user asks. Disconnecting Google clears the local index. History
+The user connects a Google account once in the extension for Gmail and Sheets
+access. Searching is initiated only when requested, and source contents are
+sent to Gemini only when the user asks. The extension also indexes inbox
+messages locally every 5 minutes while Chrome is running (up to 20,000 body
+characters per message); email contents stay in the local Chrome profile and
+are sent to Gemini only after the user asks. Disconnecting Google clears the local index. History
 displays the user's question and stores safe Google source IDs for explicit
 follow-ups; source contents and AI responses are not retained.
 
 Google Docs edits use a reviewed full-text replacement and reject documents
-containing unsupported tables or embedded objects. Google Sheets edits require
-a separately requested write permission: the Exelidoc launcher appears inside
-an open Sheet, where users highlight cells, select them for Exelidoc, describe
-the requested change, review the proposed cell-by-cell changes, and approve
-before applying. Google may request authorization the first time a sheet edit
-is applied. Formula changes require an additional checkbox and confirmation.
+containing unsupported tables or embedded objects. The Exelidoc launcher
+appears inside an open Sheet, where users highlight cells, select them for
+Exelidoc, describe the requested change, optionally include matching Gmail
+emails, review the
+proposed cell-by-cell changes, and approve before applying. The initial Google
+setup requests spreadsheet edit access with Gmail access. Existing users see a
+one-time **Finish Google setup** action in the popup to approve the added scope;
+afterward there is no separate Sheets connection. Formula changes require an
+additional checkbox and confirmation.
 Spreadsheet edits re-read the range before writing and stop if it changed
 after the preview. Neither flow sends email messages; approved edits write
 only to the reviewed document or cells.

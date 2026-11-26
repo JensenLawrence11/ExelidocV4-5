@@ -96,6 +96,54 @@
   box-shadow: 0 0 0 1px #1a73e8;
 }
 
+.exelidoc-gmail-source-picker {
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.exelidoc-gmail-source-picker summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.exelidoc-gmail-source-picker > label {
+  display: block;
+  margin-top: 8px;
+}
+
+.exelidoc-gmail-source-picker button {
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px;
+  border: 0;
+  border-radius: 4px;
+  background: #1a73e8;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.exelidoc-gmail-source-picker button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.exelidoc-gmail-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+
+.exelidoc-gmail-status,
+.exelidoc-gmail-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #5f6368;
+}
+
 .exelidoc-panel input:not([type="checkbox"]),
 .exelidoc-panel select {
   width: 100%;

@@ -46,6 +46,9 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
           || JSON.stringify(scopes) === JSON.stringify([
             "https://www.googleapis.com/auth/spreadsheets",
           ])
+          || JSON.stringify(scopes) === JSON.stringify([
+            "https://www.googleapis.com/auth/gmail.readonly",
+          ])
         );
         callback("google-token");
       },
@@ -140,6 +143,9 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
     if (url.endsWith("/api/ai/generate-text")) {
       return jsonResponse({ generated: "This presentation is about the budget." });
     }
+    if (url.endsWith("/api/ai/analyze-text")) {
+      return jsonResponse({ corrected: "Draft based on the selected email." });
+    }
     if (url.endsWith("/api/ai/edit-range")) {
       return jsonResponse({ correctedValues: [["Name", "New"]], notes: [] });
     }
@@ -179,6 +185,7 @@ function jsonResponse(data) {
     ok: true,
     status: 200,
     json: async () => data,
+    text: async () => JSON.stringify(data),
   };
 }
 
@@ -260,6 +267,73 @@ test("history follow-up re-fetches source content only after the user asks", asy
   }]);
 });
 
+test("Gmail source search returns selectable email references", async () => {
+  const harness = createHarness();
+  const response = await harness.send({
+    type: "SEARCH_GMAIL_CONTEXT",
+    query: "budget report",
+  });
+
+  assert.equal(response.ok, true, response.error);
+  assert.equal(response.items.length, 1);
+  assert.equal(response.items[0].title, "Budget review");
+  assert.equal(response.items[0].sourceRef.id, "message-1");
+});
+
+test("Gmail draft analysis includes only explicitly selected email content", async () => {
+  const harness = createHarness();
+  const response = await harness.send({
+    type: "ANALYZE_TEXT",
+    text: "Hello",
+    instruction: "Write a reply using this email",
+    gmailSourceRefs: [{
+      provider: "google",
+      kind: "gmail_message",
+      id: "message-1",
+    }],
+  }, {
+    url: "https://mail.google.com/mail/u/0/#inbox",
+  });
+
+  assert.equal(response.ok, true, response.error);
+  const request = harness.requests.find(({ url }) => url.endsWith("/api/ai/analyze-text"));
+  const body = JSON.parse(request.options.body);
+  assert.match(body.context, /Budget review email body/);
+  assert.deepEqual(body.source_refs, [
+    { provider: "google", kind: "gmail_message", id: "message-1" },
+  ]);
+});
+
+test("Google Sheets preview includes only the selected Gmail messages as context", async () => {
+  const harness = createHarness();
+  const response = await harness.send({
+    type: "GENERATE_GOOGLE_SHEET_EDIT",
+    snapshot: {
+      spreadsheetId: "sheet-1",
+      sheetTitle: "Plan",
+      range: "A1:B2",
+      values: [["Quarter", "Forecast"], ["Q1", 120]],
+    },
+    instruction: "Create a forecast based on these emails",
+    gmailSourceRefs: [{
+      provider: "google",
+      kind: "gmail_message",
+      id: "message-1",
+    }],
+  }, {
+    url: "https://docs.google.com/spreadsheets/d/sheet-1/edit",
+  });
+
+  assert.equal(response.ok, true, response.error);
+  const request = harness.requests.find(({ url }) => url.endsWith("/api/ai/edit-range"));
+  const body = JSON.parse(request.options.body);
+  assert.match(body.context, /Budget review email body/);
+  assert.deepEqual(body.source_refs, [
+    { provider: "google", kind: "google_spreadsheet", id: "sheet-1" },
+    { provider: "google", kind: "gmail_message", id: "message-1" },
+  ]);
+});
+
 test("manifest schedules Gmail indexing and injects Exelidoc in Sheets and Slides", () => {
   assert.ok(manifest.permissions.includes("alarms"));
   assert.ok(manifest.content_scripts.some(({ matches, js }) => (
@@ -271,7 +345,16 @@ test("manifest schedules Gmail indexing and injects Exelidoc in Sheets and Slide
     && js.includes("content-scripts/gsheets.js")
   )));
   assert.ok(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/gmail.readonly"));
+  assert.ok(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/spreadsheets"));
   assert.equal(manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/presentations.readonly"), false);
+  assert.ok(manifest.content_scripts.some(({ matches, js }) => (
+    matches.includes("https://mail.google.com/*")
+    && js.includes("content-scripts/gmail-source-picker.js")
+  )));
+  assert.ok(manifest.content_scripts.some(({ matches, js }) => (
+    matches.includes("https://docs.google.com/spreadsheets/*")
+    && js.includes("content-scripts/gmail-source-picker.js")
+  )));
 });
 
 test("Google Sheets edits recheck source values and formulas need separate confirmation", async () => {

@@ -92,6 +92,7 @@ function createSheetPanel() {
   panel.innerHTML = `
     <div class="exelidoc-panel-header"><span>Exelidoc · Sheets</span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
     <div class="exelidoc-docs-note">Highlight cells in the sheet, then choose them for Exelidoc. Describe what to make or change. Nothing is written until you review and apply the preview.</div>
+    <div class="exelidoc-gmail-source-picker-slot"></div>
     <div class="exelidoc-sheet-selection" aria-live="polite">No cells selected for Exelidoc.</div>
     <button class="exelidoc-sheet-load" type="button">Select highlighted cells</button>
     <label for="exelidoc-sheet-instruction">What would you like to make or change?</label>
@@ -129,6 +130,9 @@ function createSheetPanel() {
   const formulaCheckbox = formulaLabel.querySelector("input");
   const applyButton = panel.querySelector(".exelidoc-sheet-apply");
   const discardButton = panel.querySelector(".exelidoc-sheet-discard");
+  const gmailSourcePicker = window.ExelidocGmailSourcePicker.mount(
+    panel.querySelector(".exelidoc-gmail-source-picker-slot")
+  );
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
     : { refresh() {} };
@@ -186,9 +190,13 @@ function createSheetPanel() {
         type: "GENERATE_GOOGLE_SHEET_EDIT",
         snapshot: sheetSnapshot,
         instruction,
+        gmailSourceRefs: gmailSourcePicker.getSelectedRefs(),
       });
       renderProposal(response.data.correctedValues);
-      status.textContent = "Review the proposed cell changes. Nothing has been written.";
+      const selectedTitles = gmailSourcePicker.getSelectedTitles();
+      status.textContent = selectedTitles.length
+        ? `Review the proposed cell changes. Included Gmail: ${selectedTitles.join("; ")}. Nothing has been written.`
+        : "Review the proposed cell changes. Nothing has been written.";
       history.refresh();
     } catch (error) {
       status.textContent = error.message;

@@ -73,14 +73,21 @@ function createIndexedDb() {
   };
 }
 
-function createHarness({ paginate = false } = {}) {
+function createHarness({ paginate = false, existingAlarmPeriod = null } = {}) {
   let onMessage;
   let onStartup;
   let onAlarm;
   const data = { googleDataConnected: true };
   const alarms = [];
+  const requestedScopes = [];
   const requests = [];
   const indexedDB = createIndexedDb();
+  if (existingAlarmPeriod) {
+    alarms.push({
+      name: "exelidoc-gmail-inbox-scan",
+      options: { periodInMinutes: existingAlarmPeriod },
+    });
+  }
   const messageBody = Buffer.from("The requested budget report is attached.").toString("base64url");
   const chrome = {
     runtime: {
@@ -117,12 +124,20 @@ function createHarness({ paginate = false } = {}) {
       },
     },
     identity: {
-      getAuthToken: (_options, callback) => callback("google-token"),
+      getAuthToken: (options, callback) => {
+        requestedScopes.push(...Array.from(options.scopes));
+        callback("google-token");
+      },
       clearAllCachedAuthTokens(callback) { callback(); },
     },
     alarms: {
       onAlarm: { addListener(callback) { onAlarm = callback; } },
-      create(name, options) { alarms.push({ name, options }); },
+      create(name, options) {
+        const index = alarms.findIndex((alarm) => alarm.name === name);
+        const alarm = { name, options };
+        if (index >= 0) alarms[index] = alarm;
+        else alarms.push(alarm);
+      },
       get: async (name) => alarms.find((alarm) => alarm.name === name) || null,
       clear: async (name) => {
         const index = alarms.findIndex((alarm) => alarm.name === name);
@@ -199,6 +214,7 @@ function createHarness({ paginate = false } = {}) {
     alarms,
     requests,
     indexedDB,
+    requestedScopes,
     async send(message) {
       return new Promise((resolve) => {
         assert.equal(onMessage(message, {}, resolve), true);
@@ -250,7 +266,7 @@ test("scheduled alarm is restored after startup and disconnect deletes local ind
   const harness = createHarness();
   await harness.startup();
   assert.equal(harness.alarms.length, 1);
-  assert.equal(harness.alarms[0].options.periodInMinutes, 15);
+  assert.equal(harness.alarms[0].options.periodInMinutes, 5);
 
   await harness.send({ type: "SCAN_GMAIL_NOW" });
   assert.ok(harness.indexedDB.databases.has("exelidoc-gmail-index"));
@@ -259,7 +275,16 @@ test("scheduled alarm is restored after startup and disconnect deletes local ind
   assert.equal(disconnected.ok, true);
   assert.equal(harness.indexedDB.databases.has("exelidoc-gmail-index"), false);
   assert.equal(harness.data.googleDataConnected, undefined);
+  assert.equal(harness.data.googleAccessConfigured, undefined);
   assert.equal(harness.alarms.length, 0);
+});
+
+test("startup upgrades an old inbox alarm to a five-minute refresh", async () => {
+  const harness = createHarness({ existingAlarmPeriod: 15 });
+  await harness.startup();
+
+  assert.equal(harness.alarms.length, 1);
+  assert.equal(harness.alarms[0].options.periodInMinutes, 5);
 });
 
 test("reconnecting Google preserves the existing local inbox index", async () => {
@@ -272,4 +297,7 @@ test("reconnecting Google preserves the existing local inbox index", async () =>
     harness.indexedDB.databases.get("exelidoc-gmail-index").size,
     1
   );
+  assert.ok(harness.requestedScopes.includes("https://www.googleapis.com/auth/gmail.readonly"));
+  assert.ok(harness.requestedScopes.includes("https://www.googleapis.com/auth/spreadsheets"));
+  assert.equal(harness.data.googleAccessConfigured, true);
 });

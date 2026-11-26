@@ -61,11 +61,17 @@ function renderGmailScanStatus(connected, scan) {
 async function refreshGmailScanStatus() {
   try {
     const result = await sendRuntimeMessage({ type: "GET_GMAIL_SCAN_STATUS" });
-    document.getElementById("connect-google-btn").hidden = result.connected;
+    const connectButton = document.getElementById("connect-google-btn");
+    connectButton.hidden = result.connected && result.accessConfigured;
+    connectButton.textContent = result.connected
+      ? "Finish Google setup (Gmail + Sheets)"
+      : "Connect Google once (Gmail + Sheets)";
     document.getElementById("disconnect-google-btn").hidden = !result.connected;
     document.getElementById("google-status").textContent = result.connected
-      ? "Google is connected. Inbox scanning runs automatically while Chrome is open."
-      : "Connect an account to search its email, Docs, Sheets, and Slides.";
+      ? result.accessConfigured
+        ? "Google is ready. Inbox scanning refreshes every 5 minutes while Chrome is open."
+        : "Finish Google setup once to enable Gmail context and Sheets edits."
+      : "Connect Google once to use Gmail messages in Sheets and drafts.";
     renderGmailScanStatus(result.connected, result.scan);
   } catch (error) {
     document.getElementById("gmail-scan-status").textContent = error.message;
@@ -304,7 +310,7 @@ document.getElementById("connect-google-btn").addEventListener("click", async (e
   try {
     await sendRuntimeMessage({ type: "CONNECT_GOOGLE_DATA" });
     await refreshGmailScanStatus();
-    googleStatus.textContent = "Google connected. Automatic inbox scanning has started.";
+    googleStatus.textContent = "Google is ready. Gmail refreshes every 5 minutes while Chrome is open.";
   } catch (error) {
     googleStatus.textContent = error.message;
   } finally {

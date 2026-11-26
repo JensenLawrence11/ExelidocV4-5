@@ -2,6 +2,7 @@ let activePanel = null;
 let activeBox = null;
 let preEditSnapshot = null;
 let pendingPreview = null;
+let gmailSourcePicker = null;
 
 function captureComposeSnapshot(box) {
   if (!box) return null;
@@ -93,6 +94,7 @@ function createExelidocPanel() {
   panel.innerHTML = `
     <div class="exelidoc-panel-header">Exelidoc</div>
     <textarea class="exelidoc-query" placeholder="e.g. make this more formal, fix grammar, shorten it... or write a new email from scratch"></textarea>
+    <div class="exelidoc-gmail-source-picker-slot"></div>
     <button class="exelidoc-submit">Ask</button>
     <section class="exelidoc-docs-preview" hidden>
       <label>Proposed email draft</label>
@@ -123,6 +125,9 @@ function createExelidocPanel() {
   const applyEl = panel.querySelector(".exelidoc-docs-apply");
   const discardEl = panel.querySelector(".exelidoc-docs-discard");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
+  gmailSourcePicker = window.ExelidocGmailSourcePicker.mount(
+    panel.querySelector(".exelidoc-gmail-source-picker-slot")
+  );
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
     : { refresh: () => {} };
@@ -173,7 +178,12 @@ function createExelidocPanel() {
     previewEl.hidden = true;
 
     chrome.runtime.sendMessage(
-      { type: "ANALYZE_TEXT", text, instruction },
+      {
+        type: "ANALYZE_TEXT",
+        text,
+        instruction,
+        gmailSourceRefs: gmailSourcePicker.getSelectedRefs(),
+      },
       (response) => {
         submitEl.disabled = false;
         if (chrome.runtime.lastError) {
@@ -207,7 +217,10 @@ function createExelidocPanel() {
         };
         previewTextEl.value = corrected;
         previewEl.hidden = false;
-        statusEl.textContent = "Review the proposed draft. Your email has not been changed.";
+        const selectedTitles = gmailSourcePicker.getSelectedTitles();
+        statusEl.textContent = selectedTitles.length
+          ? `Review the proposed draft. Included Gmail: ${selectedTitles.join("; ")}. Your email has not been changed.`
+          : "Review the proposed draft. Your email has not been changed.";
       }
     );
   });
@@ -256,6 +269,7 @@ function createExelidocPanel() {
 
 function resetPanelState(panel) {
   panel.querySelector(".exelidoc-query").value = "";
+  gmailSourcePicker?.clear();
   panel.querySelector(".exelidoc-status").textContent = "";
   panel.querySelector(".exelidoc-undo").hidden = true;
   panel.querySelector(".exelidoc-docs-preview").hidden = true;
