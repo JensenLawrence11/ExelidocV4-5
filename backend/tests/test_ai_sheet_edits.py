@@ -1,4 +1,5 @@
 import json
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -204,3 +205,17 @@ def test_spreadsheet_generation_rejects_ragged_sheets():
     ):
         with pytest.raises(AIServiceError, match="invalid spreadsheet plan"):
             generate_google_spreadsheet("Create a budget")
+
+
+def test_spreadsheet_generation_logs_validation_reason_without_response_content(caplog):
+    with (
+        patch("services.ai_service._call_gemini", return_value="not valid JSON"),
+        patch("services.ai_service.capture_exception"),
+        caplog.at_level(logging.ERROR),
+    ):
+        with pytest.raises(AIServiceError, match="invalid spreadsheet plan"):
+            generate_google_spreadsheet("Create a budget")
+
+    assert "ai_response_invalid kind=spreadsheet_generation" in caplog.text
+    assert "reason=" in caplog.text
+    assert "not valid JSON" not in caplog.text

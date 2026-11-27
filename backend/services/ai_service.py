@@ -51,9 +51,10 @@ class AIMonthlyBudgetExceeded(AIServiceError):
 
 def _log_invalid_ai_response(kind: str, error: Exception) -> None:
     logging.error(
-        "ai_response_invalid kind=%s exception_type=%s",
+        "ai_response_invalid kind=%s exception_type=%s reason=%s",
         kind,
         type(error).__name__,
+        str(error)[:160],
     )
     capture_exception(error)
 
