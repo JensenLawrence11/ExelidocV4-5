@@ -258,6 +258,50 @@ def test_google_sheet_format_route_returns_plan_and_saves_instruction():
     )
 
 
+def test_google_spreadsheet_generation_route_returns_plan_and_saves_prompt():
+    app = create_app()
+    workbook = {
+        "title": "Budget",
+        "sheets": [{"title": "Summary", "values": [["Category"], ["Housing"]]}],
+        "notes": [],
+        "cellCount": 2,
+    }
+
+    with app.test_client() as client, patch(
+        "utils.auth_decorator.get_user_by_session_token", return_value=USER
+    ), patch("utils.auth_decorator.has_access", return_value=True), patch(
+        "utils.auth_decorator.check_and_consume_quota", return_value=(True, 49)
+    ), patch(
+        "routes.ai.generate_google_spreadsheet",
+        return_value=workbook,
+    ) as generate_spreadsheet, patch("routes.ai.save_conversation") as save_history, patch(
+        "routes.ai.log_ai_usage"
+    ):
+        response = client.post(
+            "/api/ai/generate-spreadsheet",
+            json={
+                "instruction": "Create a simple budget",
+                "source_url": "https://docs.google.com/spreadsheets/d/sheet-1/edit",
+                "source_urls": ["https://docs.google.com/spreadsheets/d/sheet-1/edit"],
+                "client": "chrome",
+            },
+            headers={"X-Session-Token": "session-1"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["sheets"] == workbook["sheets"]
+    generate_spreadsheet.assert_called_once_with("Create a simple budget", context=None)
+    save_history.assert_called_once_with(
+        "user-1",
+        "chrome",
+        "generate-spreadsheet",
+        "https://docs.google.com/spreadsheets/d/sheet-1/edit",
+        ["https://docs.google.com/spreadsheets/d/sheet-1/edit"],
+        "Create a simple budget",
+        None,
+    )
+
+
 def test_google_docs_format_route_returns_plan_and_saves_instruction():
     app = create_app()
     paragraphs = ["Quarterly Report", "Revenue increased by 10%."]

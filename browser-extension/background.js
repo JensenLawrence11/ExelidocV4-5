@@ -1057,6 +1057,373 @@ async function generateGoogleSheetEdit(message, sender) {
   return { data };
 }
 
+const SAFE_GOOGLE_SHEET_FORMULA_FUNCTIONS = new Set([
+  "SUM", "AVERAGE", "COUNT", "COUNTA", "MIN", "MAX", "IF", "IFS", "AND", "OR",
+  "NOT", "ROUND", "ROUNDUP", "ROUNDDOWN", "ABS", "DATE", "YEAR", "MONTH", "DAY",
+  "TODAY", "NOW", "COUNTIF", "COUNTIFS", "SUMIF", "SUMIFS", "AVERAGEIF",
+  "AVERAGEIFS", "IFERROR", "INDEX", "MATCH", "VLOOKUP", "XLOOKUP", "FILTER",
+  "SORT", "UNIQUE", "CONCATENATE", "TEXT", "LEFT", "RIGHT", "MID", "LEN", "TRIM",
+  "SUBSTITUTE", "UPPER", "LOWER", "PROPER", "SPLIT", "VALUE", "COUNTUNIQUE",
+  "SUMPRODUCT", "EOMONTH", "ARRAYFORMULA", "SEQUENCE", "TRANSPOSE", "ROW",
+  "COLUMN", "ISBLANK", "ISNUMBER", "ISTEXT", "REGEXMATCH", "REGEXEXTRACT",
+  "REGEXREPLACE",
+]);
+const GOOGLE_SHEET_NUMBER_FORMATS = {
+  CURRENCY: { type: "CURRENCY", pattern: "$#,##0.00" },
+  PERCENT: { type: "PERCENT", pattern: "0.00%" },
+  DATE: { type: "DATE", pattern: "yyyy-mm-dd" },
+  NUMBER: { type: "NUMBER", pattern: "#,##0.00" },
+  TEXT: { type: "TEXT", pattern: "@" },
+};
+
+function isSafeGeneratedGoogleFormula(value) {
+  if (!value.startsWith("=") || value.length > 500) return false;
+  const functions = value.toUpperCase().match(/\b[A-Z][A-Z0-9._]*(?=\s*\()/g) || [];
+  return functions.every((name) => SAFE_GOOGLE_SHEET_FORMULA_FUNCTIONS.has(name));
+}
+
+function validateGoogleSpreadsheetPlan(workbook) {
+  if (
+    !workbook
+    || typeof workbook !== "object"
+    || Array.isArray(workbook)
+    || typeof workbook.title !== "string"
+    || !workbook.title.trim()
+    || workbook.title.trim().length > 255
+    || !Array.isArray(workbook.sheets)
+    || workbook.sheets.length < 1
+    || workbook.sheets.length > 8
+    || !Array.isArray(workbook.notes)
+    || workbook.notes.length > 10
+    || workbook.notes.some((note) => typeof note !== "string" || note.length > 200)
+  ) {
+    throw new Error("The generated spreadsheet preview is invalid. Generate it again and retry.");
+  }
+  const sheetTitles = new Set();
+  let cellCount = 0;
+  let formulaCount = 0;
+  workbook.sheets.forEach((sheet) => {
+    if (
+      !sheet
+      || typeof sheet !== "object"
+      || typeof sheet.title !== "string"
+      || !sheet.title.trim()
+      || sheet.title.length > 100
+      || /[\[\]:*?\/\\\u0000-\u001f]/.test(sheet.title)
+      || sheetTitles.has(sheet.title.trim().toLocaleLowerCase())
+      || !Array.isArray(sheet.values)
+      || !sheet.values.length
+      || sheet.values.some((row) => !Array.isArray(row) || !row.length)
+      || new Set(sheet.values.map((row) => row.length)).size !== 1
+    ) {
+      throw new Error("The generated spreadsheet contains an invalid sheet.");
+    }
+    sheetTitles.add(sheet.title.trim().toLocaleLowerCase());
+    const columnCount = sheet.values[0].length;
+    const columnFormats = sheet.columnFormats || [];
+    if (
+      !Array.isArray(columnFormats)
+      || columnFormats.length > columnCount
+      || columnFormats.some((format) => (
+        !format
+        || typeof format !== "object"
+        || Array.isArray(format)
+        || Object.keys(format).length !== 2
+        || !Number.isInteger(format.columnIndex)
+        || format.columnIndex < 0
+        || format.columnIndex >= columnCount
+        || !Object.prototype.hasOwnProperty.call(GOOGLE_SHEET_NUMBER_FORMATS, format.numberFormat)
+      ))
+      || new Set(columnFormats.map((format) => format.columnIndex)).size !== columnFormats.length
+    ) {
+      throw new Error("The generated spreadsheet contains invalid column formatting.");
+    }
+    sheet.values.forEach((row) => row.forEach((value) => {
+      cellCount += 1;
+      if (cellCount > 5000) throw new Error("The generated spreadsheet is too large to create.");
+      if (!isGoogleSheetScalar(value) || (typeof value === "string" && value.length > 5000)) {
+        throw new Error("The generated spreadsheet contains an invalid cell value.");
+      }
+      if (typeof value === "string" && value.trimStart().startsWith("=")) {
+        if (!isSafeGeneratedGoogleFormula(value)) {
+          throw new Error("The preview contains an unsupported or external-data formula.");
+        }
+        formulaCount += 1;
+        if (formulaCount > 500) throw new Error("The generated workbook has too many formulas to review safely.");
+      }
+    }));
+    if (sheet.values[0].some((value) => typeof value !== "string" || !value.trim())) {
+      throw new Error("Each generated sheet needs a complete text header row.");
+    }
+  });
+  return { cellCount, formulaCount };
+}
+
+function makeUniqueGoogleSheetTitle(title, existingTitles) {
+  const existing = new Set(existingTitles.map((name) => name.toLocaleLowerCase()));
+  const base = title.trim().slice(0, 100);
+  if (!existing.has(base.toLocaleLowerCase())) return base;
+  let suffixNumber = 2;
+  while (suffixNumber < 1000) {
+    const suffix = ` (${suffixNumber})`;
+    const candidate = `${base.slice(0, 100 - suffix.length)}${suffix}`;
+    if (!existing.has(candidate.toLocaleLowerCase())) return candidate;
+    suffixNumber += 1;
+  }
+  throw new Error(`Could not find an unused tab name for "${title}".`);
+}
+
+async function generateGoogleSpreadsheet(message, sender) {
+  const spreadsheetId = verifyGoogleSheetSender(message.spreadsheetId, sender);
+  if (!["currentSpreadsheet", "newSpreadsheet"].includes(message.destination)) {
+    throw new Error("Choose where to create the spreadsheet.");
+  }
+  if (
+    typeof message.instruction !== "string"
+    || !message.instruction.trim()
+    || message.instruction.length > 10000
+  ) {
+    throw new Error("Describe the spreadsheet you want to create.");
+  }
+  const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
+  if (!sessionToken) throw new Error("Sign in to Exelidoc from the toolbar popup first.");
+
+  const sourceUrl = getGoogleSheetUrl(spreadsheetId);
+  const gmailContext = await getSelectedGmailContext(message.gmailSourceRefs);
+  const sourceRefs = [
+    ...(message.destination === "currentSpreadsheet"
+      ? [{ provider: "google", kind: "google_spreadsheet", id: spreadsheetId }]
+      : []),
+    ...gmailContext.sourceRefs,
+  ];
+  const response = await fetch(`${BACKEND_URL}/api/ai/generate-spreadsheet`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-Token": sessionToken,
+    },
+    body: JSON.stringify({
+      instruction: message.instruction.trim(),
+      context: gmailContext.context,
+      source_url: sourceUrl,
+      source_urls: [sourceUrl, ...gmailContext.sources.map((source) => source.url)],
+      source_refs: sourceRefs,
+      client: "chrome",
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Exelidoc backend returned ${response.status}.`);
+  if (data.error) throw new Error(data.error);
+  const workbook = {
+    title: data.title,
+    sheets: data.sheets,
+    notes: data.notes || [],
+  };
+  const counts = validateGoogleSpreadsheetPlan(workbook);
+
+  let existingSheetTitles = [];
+  if (message.destination === "currentSpreadsheet") {
+    const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
+    const metadata = await getGoogleSheetMetadata(spreadsheetId, accessToken);
+    existingSheetTitles = (metadata.sheets || [])
+      .map((sheet) => sheet.properties?.title)
+      .filter(Boolean);
+    const reservedTitles = [...existingSheetTitles];
+    workbook.sheets = workbook.sheets.map((sheet) => {
+      const title = makeUniqueGoogleSheetTitle(sheet.title, reservedTitles);
+      reservedTitles.push(title);
+      return { ...sheet, title };
+    });
+  }
+  return {
+    ok: true,
+    workbook,
+    destination: message.destination,
+    spreadsheetId,
+    existingSheetTitles,
+    ...counts,
+  };
+}
+
+function buildGoogleSpreadsheetWriteRequests(workbook, sheetIds) {
+  const requests = [];
+  workbook.sheets.forEach((sheet, sheetIndex) => {
+    const sheetId = sheetIds[sheetIndex];
+    const rowCount = sheet.values.length;
+    const columnCount = sheet.values[0].length;
+    const rowData = sheet.values.map((row) => ({
+      values: row.map((value) => {
+        if (value === null) return {};
+        if (typeof value === "string" && isGoogleFormula(value)) {
+          return { userEnteredValue: { formulaValue: value } };
+        }
+        if (typeof value === "string") return { userEnteredValue: { stringValue: value } };
+        if (typeof value === "boolean") return { userEnteredValue: { boolValue: value } };
+        return { userEnteredValue: { numberValue: value } };
+      }),
+    }));
+    requests.push({
+      updateCells: {
+        start: { sheetId, rowIndex: 0, columnIndex: 0 },
+        rows: rowData,
+        fields: "userEnteredValue",
+      },
+    });
+    requests.push({
+      addBanding: {
+        bandedRange: {
+          range: { sheetId, startRowIndex: 0, endRowIndex: rowCount, startColumnIndex: 0, endColumnIndex: columnCount },
+          rowProperties: {
+            headerColor: { red: 0.13, green: 0.22, blue: 0.52 },
+            firstBandColor: { red: 1, green: 1, blue: 1 },
+            secondBandColor: { red: 0.94, green: 0.96, blue: 1 },
+          },
+        },
+      },
+    });
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: columnCount },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: { red: 0.13, green: 0.22, blue: 0.52 },
+            horizontalAlignment: "CENTER",
+            textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true },
+          },
+        },
+        fields: "userEnteredFormat(backgroundColor,horizontalAlignment,textFormat)",
+      },
+    });
+    (sheet.columnFormats || []).forEach(({ columnIndex, numberFormat }) => {
+      if (rowCount < 2) return;
+      requests.push({
+        repeatCell: {
+          range: { sheetId, startRowIndex: 1, endRowIndex: rowCount, startColumnIndex: columnIndex, endColumnIndex: columnIndex + 1 },
+          cell: { userEnteredFormat: { numberFormat: GOOGLE_SHEET_NUMBER_FORMATS[numberFormat] } },
+          fields: "userEnteredFormat.numberFormat",
+        },
+      });
+    });
+    requests.push({
+      updateSheetProperties: {
+        properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
+        fields: "gridProperties.frozenRowCount",
+      },
+    });
+    requests.push({
+      autoResizeDimensions: {
+        dimensions: { sheetId, dimension: "COLUMNS", startIndex: 0, endIndex: columnCount },
+      },
+    });
+  });
+  return requests;
+}
+
+async function applyGoogleSpreadsheetPlan(message, sender) {
+  const spreadsheetId = verifyGoogleSheetSender(message.spreadsheetId, sender);
+  const counts = validateGoogleSpreadsheetPlan(message.workbook);
+  if (!["currentSpreadsheet", "newSpreadsheet"].includes(message.destination)) {
+    throw new Error("The spreadsheet destination is invalid. Generate a new preview.");
+  }
+  if (message.destination === "currentSpreadsheet" && spreadsheetId !== message.spreadsheetId) {
+    throw new Error("The active spreadsheet changed. Generate a new preview.");
+  }
+  if (counts.formulaCount > 0 && message.confirmFormulaChanges !== true) {
+    throw new Error("Confirm the reviewed formulas before creating the spreadsheet.");
+  }
+
+  const accessToken = await getGoogleAccessToken([GOOGLE_SHEETS_EDIT_SCOPE], true);
+  let targetSpreadsheetId = spreadsheetId;
+  let sheetIds = [];
+  const requests = [];
+  if (message.destination === "currentSpreadsheet") {
+    const metadata = await getGoogleSheetMetadata(spreadsheetId, accessToken);
+    const existingSheets = metadata.sheets || [];
+    const existingTitles = existingSheets.map((sheet) => sheet.properties?.title).filter(Boolean);
+    const existingTitleSet = new Set(existingTitles.map((title) => title.toLocaleLowerCase()));
+    const collision = message.workbook.sheets.find((sheet) => (
+      existingTitleSet.has(sheet.title.toLocaleLowerCase())
+    ));
+    if (collision) {
+      throw new Error(`A tab named "${collision.title}" was added after the preview. Generate a new preview.`);
+    }
+    const maxSheetId = existingSheets.reduce(
+      (maxId, sheet) => Math.max(maxId, Number.isInteger(sheet.properties?.sheetId) ? sheet.properties.sheetId : 0),
+      0
+    );
+    if (maxSheetId + message.workbook.sheets.length > 2147483647) {
+      throw new Error("No available sheet IDs remain in this spreadsheet.");
+    }
+    sheetIds = message.workbook.sheets.map((sheet, index) => maxSheetId + index + 1);
+    message.workbook.sheets.forEach((sheet, index) => {
+      requests.push({
+        addSheet: {
+          properties: {
+            sheetId: sheetIds[index],
+            title: sheet.title,
+            gridProperties: { rowCount: sheet.values.length, columnCount: sheet.values[0].length },
+          },
+        },
+      });
+    });
+  } else {
+    const createResponse = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        properties: { title: message.workbook.title },
+        sheets: message.workbook.sheets.map((sheet) => ({
+          properties: {
+            title: sheet.title,
+            gridProperties: { rowCount: sheet.values.length, columnCount: sheet.values[0].length },
+          },
+        })),
+      }),
+    });
+    const created = await readGoogleApiResponse(createResponse);
+    if (
+      typeof created.spreadsheetId !== "string"
+      || !Array.isArray(created.sheets)
+      || created.sheets.length !== message.workbook.sheets.length
+      || created.sheets.some((sheet) => !Number.isInteger(sheet.properties?.sheetId))
+    ) {
+      throw new Error("Google Sheets created a file but returned incomplete tab details.");
+    }
+    targetSpreadsheetId = created.spreadsheetId;
+    sheetIds = created.sheets.map((sheet) => sheet.properties.sheetId);
+  }
+  requests.push(...buildGoogleSpreadsheetWriteRequests(message.workbook, sheetIds));
+  try {
+    await readGoogleApiResponse(await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(targetSpreadsheetId)}:batchUpdate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ requests }),
+      }
+    ));
+  } catch (error) {
+    if (message.destination === "newSpreadsheet") {
+      throw new Error(`The spreadsheet file was created, but its tabs could not be populated. Open it at ${getGoogleSheetUrl(targetSpreadsheetId)}. ${error.message}`);
+    }
+    throw error;
+  }
+
+  return {
+    ok: true,
+    spreadsheetId: targetSpreadsheetId,
+    url: getGoogleSheetUrl(targetSpreadsheetId),
+    tabTitles: message.workbook.sheets.map((sheet) => sheet.title),
+    formulaCount: counts.formulaCount,
+  };
+}
+
 function isGoogleFormula(value) {
   return typeof value === "string" && value.trimStart().startsWith("=");
 }
@@ -2449,6 +2816,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "GENERATE_GOOGLE_SHEET_EDIT") {
     handleGoogleSheetMessage(message, sender, sendResponse, generateGoogleSheetEdit, "Google Sheets preview");
+    return true;
+  }
+
+  if (message.type === "GENERATE_GOOGLE_SPREADSHEET") {
+    handleGoogleSheetMessage(message, sender, sendResponse, generateGoogleSpreadsheet, "Google spreadsheet generation preview");
+    return true;
+  }
+
+  if (message.type === "APPLY_GOOGLE_SPREADSHEET_PLAN") {
+    handleGoogleSheetMessage(message, sender, sendResponse, applyGoogleSpreadsheetPlan, "Google spreadsheet creation");
     return true;
   }
 

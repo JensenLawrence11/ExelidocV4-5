@@ -9,6 +9,7 @@ from services.ai_service import (
     edit_spreadsheet_range,
     format_google_document,
     format_spreadsheet_range,
+    generate_google_spreadsheet,
 )
 
 
@@ -143,3 +144,63 @@ def test_google_docs_format_rejects_out_of_range_paragraph_indexes():
     ):
         with pytest.raises(AIServiceError, match="invalid formatting plan"):
             format_google_document(["First paragraph"], "Make the last paragraph a heading")
+
+
+def test_spreadsheet_generation_returns_validated_tabs_and_formulas():
+    plan = {
+        "title": "Monthly Budget",
+        "sheets": [{
+            "title": "Summary",
+            "values": [
+                ["Category", "Planned", "Actual", "Variance"],
+                ["Housing", 1200, 1150, "=B2-C2"],
+                ["Total", "=SUM(B2:B2)", "=SUM(C2:C2)", "=SUM(D2:D2)"],
+            ],
+            "columnFormats": [{"columnIndex": 1, "numberFormat": "CURRENCY"}],
+        }],
+        "notes": ["Formula cells are included for totals and variance."],
+    }
+
+    with patch(
+        "services.ai_service._call_gemini",
+        return_value=json.dumps(plan),
+    ) as call_provider:
+        result = generate_google_spreadsheet("Create a monthly budget workbook")
+
+    assert result["title"] == "Monthly Budget"
+    assert result["sheets"] == plan["sheets"]
+    assert result["cellCount"] == 12
+    assert result["formulaCount"] == 4
+    assert "Create a monthly budget workbook" in call_provider.call_args.args[1]
+
+
+def test_spreadsheet_generation_rejects_external_formula_functions():
+    with patch(
+        "services.ai_service._call_gemini",
+        return_value=json.dumps({
+            "title": "Budget",
+            "sheets": [{
+                "title": "Summary",
+                "values": [["Category", "External data"], ["A", '=IMPORTXML("https://example.com","//item")']],
+            }],
+            "notes": [],
+        }),
+    ):
+        with pytest.raises(AIServiceError, match="invalid spreadsheet plan"):
+            generate_google_spreadsheet("Create a budget with imported data")
+
+
+def test_spreadsheet_generation_rejects_ragged_sheets():
+    with patch(
+        "services.ai_service._call_gemini",
+        return_value=json.dumps({
+            "title": "Budget",
+            "sheets": [{
+                "title": "Summary",
+                "values": [["Category", "Total"], ["A"]],
+            }],
+            "notes": [],
+        }),
+    ):
+        with pytest.raises(AIServiceError, match="invalid spreadsheet plan"):
+            generate_google_spreadsheet("Create a budget")

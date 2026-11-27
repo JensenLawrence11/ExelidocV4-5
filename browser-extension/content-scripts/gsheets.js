@@ -96,14 +96,15 @@ function createSheetPanel() {
   panel.className = "exelidoc-panel docs-mode exelidoc-sheet-panel";
   panel.innerHTML = `
     <div class="exelidoc-panel-header"><span class="exelidoc-brand"><img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" />Exelidoc <span class="exelidoc-product-label">Sheets</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
-    <div class="exelidoc-docs-note">Select cells, then use Create &amp; edit or Formatting. Review each preview before applying it.</div>
-    <div class="exelidoc-sheet-selection" aria-live="polite">No cells selected for Exelidoc.</div>
-    <button class="exelidoc-sheet-load" type="button">Select highlighted cells</button>
+    <div class="exelidoc-docs-note">Build complete spreadsheets without selecting cells, edit a highlighted range, or format a sheet.</div>
     <div class="exelidoc-sheet-tabs" role="tablist" aria-label="Sheets tools">
       <button id="exelidoc-sheet-edit-tab" class="exelidoc-sheet-tab" type="button" role="tab" aria-controls="exelidoc-sheet-edit-pane" aria-selected="true" data-sheet-pane="edit">Create &amp; edit</button>
+      <button id="exelidoc-sheet-build-tab" class="exelidoc-sheet-tab" type="button" role="tab" aria-controls="exelidoc-sheet-build-pane" aria-selected="false" data-sheet-pane="build">Build</button>
       <button id="exelidoc-sheet-format-tab" class="exelidoc-sheet-tab" type="button" role="tab" aria-controls="exelidoc-sheet-format-pane" aria-selected="false" data-sheet-pane="formatting">Formatting</button>
     </div>
     <section id="exelidoc-sheet-edit-pane" class="exelidoc-sheet-pane" role="tabpanel" aria-labelledby="exelidoc-sheet-edit-tab" data-sheet-panel="edit">
+      <div class="exelidoc-sheet-selection" aria-live="polite">No cells selected for Exelidoc.</div>
+      <button class="exelidoc-sheet-load" type="button">Select highlighted cells</button>
       <label for="exelidoc-sheet-instruction">What would you like to make or change?</label>
       <textarea id="exelidoc-sheet-instruction" maxlength="10000" placeholder="e.g. Create a monthly budget table, add totals, or update the selected cells"></textarea>
       <div class="exelidoc-gmail-source-picker-slot"></div>
@@ -117,6 +118,29 @@ function createSheetPanel() {
         <div class="exelidoc-docs-preview-actions">
           <button class="exelidoc-sheet-apply" type="button" disabled>Apply approved changes</button>
           <button class="exelidoc-sheet-discard" type="button">Discard preview</button>
+        </div>
+      </section>
+    </section>
+    <section id="exelidoc-sheet-build-pane" class="exelidoc-sheet-pane exelidoc-sheet-build-pane" role="tabpanel" aria-labelledby="exelidoc-sheet-build-tab" data-sheet-panel="build" hidden>
+      <p class="exelidoc-docs-note">Describe a complete spreadsheet. Exelidoc can create multiple tabs, fill them with data, add formulas, and apply useful defaults. It will never overwrite existing cells.</p>
+      <label for="exelidoc-sheet-build-instruction">What should the spreadsheet contain?</label>
+      <textarea id="exelidoc-sheet-build-instruction" maxlength="10000" placeholder="e.g. Create a project budget workbook with a summary tab, monthly expense tabs, totals, and currency formatting"></textarea>
+      <label for="exelidoc-sheet-build-destination">Create it in</label>
+      <select id="exelidoc-sheet-build-destination">
+        <option value="currentSpreadsheet">This spreadsheet (add new tabs)</option>
+        <option value="newSpreadsheet">A new spreadsheet file</option>
+      </select>
+      <div class="exelidoc-gmail-source-picker-slot exelidoc-sheet-build-source-slot"></div>
+      <button class="exelidoc-sheet-build-preview-button" type="button">Generate workbook preview</button>
+      <section class="exelidoc-sheet-build-preview" hidden>
+        <pre class="exelidoc-sheet-build-summary"></pre>
+        <label class="exelidoc-sheet-build-formula-confirm" hidden>
+          <input type="checkbox" />
+          I reviewed the formulas and approve adding them to the new sheet tabs.
+        </label>
+        <div class="exelidoc-docs-preview-actions">
+          <button class="exelidoc-sheet-build-apply" type="button" disabled>Create spreadsheet</button>
+          <button class="exelidoc-sheet-build-discard" type="button">Discard preview</button>
         </div>
       </section>
     </section>
@@ -188,9 +212,22 @@ function createSheetPanel() {
   const sheetTabs = Array.from(panel.querySelectorAll(".exelidoc-sheet-tab"));
   const sheetPanes = Array.from(panel.querySelectorAll(".exelidoc-sheet-pane"));
   const numberFormatControl = panel.querySelector(".exelidoc-sheet-number-format-control");
+  const buildInstructionInput = panel.querySelector("#exelidoc-sheet-build-instruction");
+  const buildDestinationInput = panel.querySelector("#exelidoc-sheet-build-destination");
+  const buildPreviewButton = panel.querySelector(".exelidoc-sheet-build-preview-button");
+  const buildPreviewSection = panel.querySelector(".exelidoc-sheet-build-preview");
+  const buildSummary = panel.querySelector(".exelidoc-sheet-build-summary");
+  const buildFormulaLabel = panel.querySelector(".exelidoc-sheet-build-formula-confirm");
+  const buildFormulaCheckbox = buildFormulaLabel.querySelector("input");
+  const buildApplyButton = panel.querySelector(".exelidoc-sheet-build-apply");
+  const buildDiscardButton = panel.querySelector(".exelidoc-sheet-build-discard");
   const gmailSourcePicker = window.ExelidocGmailSourcePicker.mount(
     panel.querySelector(".exelidoc-gmail-source-picker-slot")
   );
+  const buildGmailSourcePicker = window.ExelidocGmailSourcePicker.mount(
+    panel.querySelector(".exelidoc-sheet-build-source-slot")
+  );
+  let sheetBuildProposal = null;
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
     : { refresh() {} };
@@ -215,6 +252,102 @@ function createSheetPanel() {
         numberFormatControl.hidden = isPressed;
       }
     });
+  });
+  const clearSheetBuildPreview = () => {
+    sheetBuildProposal = null;
+    buildPreviewSection.hidden = true;
+    buildFormulaCheckbox.checked = false;
+    buildApplyButton.disabled = true;
+  };
+  const updateBuildApplyButton = () => {
+    buildApplyButton.disabled = !sheetBuildProposal
+      || (sheetBuildProposal.formulaCount > 0 && !buildFormulaCheckbox.checked);
+  };
+  buildFormulaCheckbox.addEventListener("change", updateBuildApplyButton);
+  buildInstructionInput.addEventListener("input", clearSheetBuildPreview);
+  buildDestinationInput.addEventListener("change", clearSheetBuildPreview);
+  buildPreviewButton.addEventListener("click", async () => {
+    const spreadsheetId = getCurrentSpreadsheetId();
+    const instruction = buildInstructionInput.value.trim();
+    if (!spreadsheetId) {
+      status.textContent = "Open a Google Sheets spreadsheet and try again.";
+      return;
+    }
+    if (!instruction) {
+      status.textContent = "Describe the spreadsheet you want to create.";
+      return;
+    }
+    buildPreviewButton.disabled = true;
+    clearSheetBuildPreview();
+    status.textContent = "Designing the spreadsheet and checking formulas...";
+    try {
+      const response = await sendRuntimeMessage({
+        type: "GENERATE_GOOGLE_SPREADSHEET",
+        spreadsheetId,
+        destination: buildDestinationInput.value,
+        instruction,
+        gmailSourceRefs: buildGmailSourcePicker.getSelectedRefs(),
+      });
+      sheetBuildProposal = {
+        spreadsheetId: response.spreadsheetId,
+        destination: response.destination,
+        workbook: response.workbook,
+        cellCount: response.cellCount,
+        formulaCount: response.formulaCount,
+      };
+      renderSpreadsheetBuildProposal(sheetBuildProposal);
+      const selectedTitles = buildGmailSourcePicker.getSelectedTitles();
+      status.textContent = selectedTitles.length
+        ? `Review the new workbook preview. Included Gmail: ${selectedTitles.join("; ")}. Nothing has been created.`
+        : "Review the new workbook preview. Nothing has been created.";
+      history.refresh();
+    } catch (error) {
+      status.textContent = permissionMessage(error);
+    } finally {
+      buildPreviewButton.disabled = false;
+    }
+  });
+  buildApplyButton.addEventListener("click", async () => {
+    if (!sheetBuildProposal) return;
+    if (sheetBuildProposal.formulaCount > 0) {
+      if (!buildFormulaCheckbox.checked) {
+        status.textContent = "Review and confirm the generated formulas before creating the spreadsheet.";
+        return;
+      }
+      if (!window.confirm(`Create this spreadsheet with ${sheetBuildProposal.formulaCount} reviewed formula(s)?`)) return;
+    } else if (!window.confirm("Create this spreadsheet and its new sheet tabs?")) {
+      return;
+    }
+    buildApplyButton.disabled = true;
+    buildDiscardButton.disabled = true;
+    status.textContent = "Creating the new spreadsheet tabs...";
+    try {
+      const response = await sendRuntimeMessage({
+        type: "APPLY_GOOGLE_SPREADSHEET_PLAN",
+        spreadsheetId: sheetBuildProposal.spreadsheetId,
+        destination: sheetBuildProposal.destination,
+        workbook: sheetBuildProposal.workbook,
+        confirmFormulaChanges: buildFormulaCheckbox.checked,
+      });
+      const createdTabs = response.tabTitles.join(", ");
+      const destinationLabel = sheetBuildProposal.destination === "newSpreadsheet"
+        ? "Created new spreadsheet"
+        : "Created new tabs";
+      clearSheetBuildPreview();
+      buildInstructionInput.value = "";
+      status.textContent = `${destinationLabel}: ${createdTabs}. ${response.url}`;
+      history.refresh();
+    } catch (error) {
+      status.textContent = permissionMessage(error);
+    } finally {
+      buildDiscardButton.disabled = false;
+      updateBuildApplyButton();
+    }
+  });
+  buildDiscardButton.addEventListener("click", () => {
+    clearSheetBuildPreview();
+    buildSummary.textContent = "";
+    status.textContent = "Workbook preview discarded. No spreadsheet was created.";
   });
   formulaCheckbox.addEventListener("change", updateApplyButton);
   loadButton.addEventListener("click", async () => {
@@ -484,6 +617,51 @@ function createSheetPanel() {
     formatPreviewSection.hidden = false;
   }
 
+  function renderSpreadsheetBuildProposal(proposal) {
+    const workbook = proposal.workbook;
+    const lines = [
+      `Workbook: ${workbook.title}`,
+      `Destination: ${proposal.destination === "newSpreadsheet" ? "new spreadsheet file" : "new tabs in the open spreadsheet"}`,
+      `Tabs: ${workbook.sheets.length}  |  Cells: ${proposal.cellCount}  |  Formulas: ${proposal.formulaCount}`,
+      "The first row of each tab will be styled as a header; new tabs will have alternating row colors, a frozen header, and auto-sized columns.",
+    ];
+    const formulaLines = [];
+    workbook.sheets.forEach((sheet) => {
+      const rowCount = sheet.values.length;
+      const columnCount = sheet.values[0].length;
+      lines.push("", `${sheet.title} (${rowCount} rows x ${columnCount} columns)`);
+      (sheet.columnFormats || []).forEach((format) => {
+        lines.push(`Column ${sheetColumnName(format.columnIndex)}: ${format.numberFormat.toLowerCase()} format`);
+      });
+      sheet.values.slice(0, 12).forEach((row) => {
+        lines.push(row.slice(0, 8).map((value) => (
+          value == null ? "(blank)" : JSON.stringify(value).slice(0, 80)
+        )).join("  |  "));
+      });
+      if (rowCount > 12) lines.push(`... ${rowCount - 12} more row(s)`);
+      if (columnCount > 8) lines.push(`... ${columnCount - 8} more column(s)`);
+      sheet.values.forEach((row, rowIndex) => {
+        row.forEach((value, columnIndex) => {
+          if (isFormula(value)) {
+            formulaLines.push(`${sheet.title}!${sheetColumnName(columnIndex)}${rowIndex + 1}: ${value}`);
+          }
+        });
+      });
+    });
+    if (formulaLines.length) {
+      lines.push("", "FORMULAS TO REVIEW", ...formulaLines);
+    }
+    workbook.notes.forEach((note) => lines.push("", note));
+    buildSummary.textContent = lines.join("\n");
+    buildFormulaCheckbox.checked = false;
+    buildFormulaLabel.hidden = proposal.formulaCount === 0;
+    buildApplyButton.textContent = proposal.destination === "newSpreadsheet"
+      ? "Create new spreadsheet"
+      : "Create new tabs";
+    buildPreviewSection.hidden = false;
+    updateBuildApplyButton();
+  }
+
   document.body.appendChild(panel);
   return panel;
 }
@@ -495,7 +673,7 @@ async function loadSheetInfo() {
   status.textContent = "Checking Google Sheets access...";
   try {
     sheetInfo = await sendRuntimeMessage({ type: "GET_GOOGLE_SHEET_INFO", spreadsheetId });
-    status.textContent = `${sheetInfo.title} is ready. Highlight cells to begin.`;
+    status.textContent = `${sheetInfo.title} is ready. Use Build to create new tabs without selecting cells.`;
   } catch (error) {
     sheetInfo = null;
     status.textContent = permissionMessage(error);
@@ -524,6 +702,17 @@ function cellAddress(snapshot, row, column) {
     columnNumber = Math.floor(columnNumber / 26);
   }
   return `${letters}${Number(start[2]) + row}`;
+}
+
+function sheetColumnName(columnIndex) {
+  let columnNumber = columnIndex + 1;
+  let letters = "";
+  while (columnNumber > 0) {
+    columnNumber -= 1;
+    letters = String.fromCharCode(65 + (columnNumber % 26)) + letters;
+    columnNumber = Math.floor(columnNumber / 26);
+  }
+  return letters;
 }
 
 ensureSheetLauncher();

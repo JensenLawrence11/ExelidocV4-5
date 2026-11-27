@@ -14,6 +14,7 @@ from services.ai_service import (
     edit_spreadsheet_range,
     format_spreadsheet_range,
     format_google_document,
+    generate_google_spreadsheet,
     analyze_spreadsheet_range,
     generate_text,
 )
@@ -224,6 +225,40 @@ def edit_range_route():
         log_ai_usage(g.user["id"], "edit-range")
     except Exception as error:
         logging.error("ai_usage_log_failed action=edit-range exception_type=%s", type(error).__name__)
+        capture_exception(error)
+    result["remaining_requests"] = g.remaining_requests
+    result["tier"] = g.user.get("tier")
+    return jsonify(result)
+
+
+@ai_bp.post("/generate-spreadsheet")
+@require_subscription
+def generate_spreadsheet_route():
+    """Return a validated, reviewable workbook plan for the Sheets extension."""
+    data = request.get_json(silent=True) or {}
+    instruction = data.get("instruction", "")
+    if not isinstance(instruction, str) or not instruction.strip():
+        return jsonify(error="Describe the spreadsheet you want to create"), 400
+    try:
+        context = _get_request_context(data)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+    try:
+        result = generate_google_spreadsheet(instruction, context=context or None)
+    except AIServiceError as error:
+        return jsonify(error=str(error)), error.status_code
+    error_response = _service_error_response(result)
+    if error_response:
+        return error_response
+    _save_history("generate-spreadsheet")
+    try:
+        log_ai_usage(g.user["id"], "generate-spreadsheet")
+    except Exception as error:
+        logging.error(
+            "ai_usage_log_failed action=generate-spreadsheet exception_type=%s",
+            type(error).__name__,
+        )
         capture_exception(error)
     result["remaining_requests"] = g.remaining_requests
     result["tier"] = g.user.get("tier")

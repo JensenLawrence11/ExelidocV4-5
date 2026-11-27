@@ -19,11 +19,12 @@ currently provides:
   or use the separate Formatting tab for quick styles and custom formatting
   instructions. Review formatting before applying it; formatting does not replace
   document text. The Docs API flow does not support tables or embedded objects.
-- **Google Sheets:** select a cell range to create or edit cells, or open the
-  separate Formatting tab for quick styles and custom formatting instructions.
-  Preview formatting for the selected range or the entire active sheet before
-  applying it. Cell edits get a cell-by-cell preview, formula changes need a
-  separate confirmation, and the extension re-reads the range before writing.
+- **Google Sheets:** use **Build** to create a complete multi-tab workbook
+  without selecting cells, either as new tabs in the open spreadsheet or as a
+  separate spreadsheet file. Generated formulas and content are previewed before
+  creation, and formulas require explicit confirmation. Create & edit works on
+  highlighted cells; Formatting has quick styles and custom instructions for a
+  selected range or the whole active sheet.
 - **Google Slides:** ask questions about presentation text. This is read-only.
 - **Google sources in context:** search Gmail, Drive, Docs, Sheets, and Slides
   when requested. Select the sources to include in a request; selected content

@@ -147,6 +147,17 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
     if (pathname.endsWith("/spreadsheets/sheet-1:batchUpdate")) {
       return jsonResponse({ spreadsheetId: "sheet-1" });
     }
+    if (pathname.endsWith("/spreadsheets/new-book:batchUpdate")) {
+      return jsonResponse({ spreadsheetId: "new-book" });
+    }
+    if (pathname === "/v4/spreadsheets" && options.method === "POST") {
+      return jsonResponse({
+        spreadsheetId: "new-book",
+        sheets: [{
+          properties: { sheetId: 401, title: "Budget" },
+        }],
+      });
+    }
     if (url.endsWith("/api/ai/generate-text")) {
       return jsonResponse({ generated: "This presentation is about the budget." });
     }
@@ -160,6 +171,21 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
       return jsonResponse({
         formatting: { headerStyle: true, headerBackgroundColor: "#1A237E" },
         notes: ["Use a dark blue header."],
+      });
+    }
+    if (url.endsWith("/api/ai/generate-spreadsheet")) {
+      return jsonResponse({
+        title: "Monthly Budget",
+        sheets: [{
+          title: "Budget",
+          values: [
+            ["Category", "Planned", "Actual", "Variance"],
+            ["Housing", 1200, 1150, "=B2-C2"],
+            ["Total", "=SUM(B2:B2)", "=SUM(C2:C2)", "=SUM(D2:D2)"],
+          ],
+          columnFormats: [{ columnIndex: 1, numberFormat: "CURRENCY" }],
+        }],
+        notes: ["Added formulas for totals and variance."],
       });
     }
     throw new Error(`Unexpected request: ${url}`);
@@ -528,6 +554,81 @@ test("Google Sheets custom formatting requests use the authenticated backend pre
     startColumnIndex: 0,
     endColumnIndex: 2,
   });
+});
+
+test("Google Sheets builder creates reviewed formulas in new tabs without a selected range", async () => {
+  const harness = createHarness();
+  const sender = { url: "https://docs.google.com/spreadsheets/d/sheet-1/edit" };
+  const preview = await harness.send({
+    type: "GENERATE_GOOGLE_SPREADSHEET",
+    spreadsheetId: "sheet-1",
+    destination: "currentSpreadsheet",
+    instruction: "Create a monthly budget workbook",
+  }, sender);
+
+  assert.equal(preview.ok, true, preview.error);
+  assert.equal(preview.workbook.sheets[0].title, "Budget");
+  assert.equal(preview.formulaCount, 4);
+  assert.equal(harness.requests.some(({ url }) => url.includes(":batchUpdate")), false);
+  const generation = harness.requests.find(({ url }) => url.endsWith("/api/ai/generate-spreadsheet"));
+  assert.equal(JSON.parse(generation.options.body).instruction, "Create a monthly budget workbook");
+
+  const missingConfirmation = await harness.send({
+    type: "APPLY_GOOGLE_SPREADSHEET_PLAN",
+    spreadsheetId: preview.spreadsheetId,
+    destination: preview.destination,
+    workbook: preview.workbook,
+    confirmFormulaChanges: false,
+  }, sender);
+  assert.equal(missingConfirmation.ok, false);
+  assert.match(missingConfirmation.error, /confirm the reviewed formulas/i);
+  assert.equal(harness.requests.some(({ url }) => url.includes(":batchUpdate")), false);
+
+  const applied = await harness.send({
+    type: "APPLY_GOOGLE_SPREADSHEET_PLAN",
+    spreadsheetId: preview.spreadsheetId,
+    destination: preview.destination,
+    workbook: preview.workbook,
+    confirmFormulaChanges: true,
+  }, sender);
+  assert.equal(applied.ok, true, applied.error);
+  assert.deepEqual(Array.from(applied.tabTitles), ["Budget"]);
+  const write = harness.requests.find(({ url }) => url.includes(":batchUpdate"));
+  const requests = JSON.parse(write.options.body).requests;
+  assert.equal(requests[0].addSheet.properties.title, "Budget");
+  assert.equal(requests[0].addSheet.properties.sheetId, 124);
+  const cellWrite = requests.find((request) => request.updateCells)?.updateCells;
+  assert.equal(cellWrite.rows[1].values[3].userEnteredValue.formulaValue, "=B2-C2");
+  assert.equal(cellWrite.rows[2].values[1].userEnteredValue.formulaValue, "=SUM(B2:B2)");
+  assert.equal(requests.some((request) => request.deleteSheet), false);
+  assert.equal(requests.some((request) => request.addBanding), true);
+});
+
+test("Google Sheets builder can create a separate spreadsheet file", async () => {
+  const harness = createHarness();
+  const sender = { url: "https://docs.google.com/spreadsheets/d/sheet-1/edit" };
+  const preview = await harness.send({
+    type: "GENERATE_GOOGLE_SPREADSHEET",
+    spreadsheetId: "sheet-1",
+    destination: "newSpreadsheet",
+    instruction: "Create a monthly budget workbook",
+  }, sender);
+  assert.equal(preview.ok, true, preview.error);
+
+  const applied = await harness.send({
+    type: "APPLY_GOOGLE_SPREADSHEET_PLAN",
+    spreadsheetId: preview.spreadsheetId,
+    destination: preview.destination,
+    workbook: preview.workbook,
+    confirmFormulaChanges: true,
+  }, sender);
+  assert.equal(applied.ok, true, applied.error);
+  assert.equal(applied.spreadsheetId, "new-book");
+  assert.equal(applied.url, "https://docs.google.com/spreadsheets/d/new-book/edit");
+  const create = harness.requests.find(({ url }) => url === "https://sheets.googleapis.com/v4/spreadsheets");
+  const body = JSON.parse(create.options.body);
+  assert.equal(body.properties.title, "Monthly Budget");
+  assert.deepEqual(Array.from(body.sheets, (sheet) => sheet.properties.title), ["Budget"]);
 });
 
 test("Google Sheets apply stops when the range changed after preview", async () => {

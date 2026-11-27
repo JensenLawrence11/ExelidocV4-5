@@ -174,7 +174,7 @@
 .exelidoc-sheet-tabs,
 .exelidoc-docs-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   padding-bottom: 8px;
   border-bottom: 1px solid #e1e6f0;
@@ -207,6 +207,7 @@
 
 .exelidoc-sheet-pane[hidden],
 .exelidoc-sheet-format-preview[hidden],
+.exelidoc-sheet-build-preview[hidden],
 .exelidoc-docs-pane[hidden],
 .exelidoc-docs-format-preview[hidden] {
   display: none !important;
@@ -318,7 +319,9 @@
 .exelidoc-docs-apply,
 .exelidoc-docs-discard,
 .exelidoc-sheet-format-apply,
-.exelidoc-sheet-format-discard {
+.exelidoc-sheet-format-discard,
+.exelidoc-sheet-build-apply,
+.exelidoc-sheet-build-discard {
   padding: 6px 10px;
   border: 1px solid #dadce0;
   border-radius: 4px;
@@ -340,7 +343,15 @@
   cursor: pointer;
 }
 
-.exelidoc-sheet-format-apply:disabled {
+.exelidoc-sheet-build-apply {
+  border-color: #3049c7;
+  background: #3049c7;
+  color: #fff;
+  cursor: pointer;
+}
+
+.exelidoc-sheet-format-apply:disabled,
+.exelidoc-sheet-build-apply:disabled {
   opacity: 0.6;
   cursor: wait;
 }
@@ -430,6 +441,29 @@
 .exelidoc-history-status,
 .exelidoc-history-meta {
   color: #5f6368;
+  font-size: 11px;
+}
+
+.exelidoc-sheet-build-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #e1e6f0;
+  border-radius: 10px;
+  background: #f8f9fc;
+}
+
+.exelidoc-sheet-build-summary {
+  max-height: 230px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.5 Inter, "Segoe UI", Arial, sans-serif;
+}
+
+.exelidoc-sheet-build-formula-confirm {
   font-size: 11px;
 }
 
@@ -593,6 +627,7 @@
 
 .exelidoc-submit,
 .exelidoc-sheet-format-preview-button,
+.exelidoc-sheet-build-preview-button,
 .exelidoc-docs-format-preview-button,
 .exelidoc-gmail-source-picker button,
 .exelidoc-gmail-finder-form button {
@@ -604,6 +639,7 @@
 
 .exelidoc-submit:hover,
 .exelidoc-sheet-format-preview-button:hover,
+.exelidoc-sheet-build-preview-button:hover,
 .exelidoc-docs-format-preview-button:hover,
 .exelidoc-gmail-source-picker button:hover,
 .exelidoc-gmail-finder-form button:hover {
@@ -612,6 +648,7 @@
 
 .exelidoc-submit:disabled,
 .exelidoc-sheet-format-preview-button:disabled,
+.exelidoc-sheet-build-preview-button:disabled,
 .exelidoc-docs-format-preview-button:disabled,
 .exelidoc-gmail-source-picker button:disabled,
 .exelidoc-gmail-finder-form button:disabled {
