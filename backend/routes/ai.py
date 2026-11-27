@@ -13,6 +13,7 @@ from services.ai_service import (
     analyze_text,
     edit_spreadsheet_range,
     format_spreadsheet_range,
+    format_google_document,
     analyze_spreadsheet_range,
     generate_text,
 )
@@ -265,6 +266,48 @@ def format_range_route():
     except Exception as error:
         logging.error(
             "ai_usage_log_failed action=format-range exception_type=%s",
+            type(error).__name__,
+        )
+        capture_exception(error)
+    result["remaining_requests"] = g.remaining_requests
+    result["tier"] = g.user.get("tier")
+    return jsonify(result)
+
+
+@ai_bp.post("/format-document")
+@require_subscription
+def format_document_route():
+    """Return a reviewable, constrained formatting plan for a Google Doc."""
+    data = request.get_json(silent=True) or {}
+    paragraphs = data.get("paragraphs")
+    instruction = data.get("instruction", "")
+    if (
+        not isinstance(paragraphs, list)
+        or not paragraphs
+        or len(paragraphs) > 500
+        or any(not isinstance(paragraph, str) for paragraph in paragraphs)
+    ):
+        return jsonify(error="Document paragraphs must be a non-empty list of text"), 400
+    if not isinstance(instruction, str) or not instruction.strip():
+        return jsonify(error="Enter formatting instructions"), 400
+    try:
+        context = _get_request_context(data)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+    try:
+        result = format_google_document(paragraphs, instruction, context=context or None)
+    except AIServiceError as error:
+        return jsonify(error=str(error)), error.status_code
+    error_response = _service_error_response(result)
+    if error_response:
+        return error_response
+    _save_history("format-document")
+    try:
+        log_ai_usage(g.user["id"], "format-document")
+    except Exception as error:
+        logging.error(
+            "ai_usage_log_failed action=format-document exception_type=%s",
             type(error).__name__,
         )
         capture_exception(error)

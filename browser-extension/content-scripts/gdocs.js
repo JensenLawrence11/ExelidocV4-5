@@ -48,17 +48,43 @@ function createExelidocPanel() {
   panel.id = "exelidoc-docs-panel";
   panel.innerHTML = `
     <div class="exelidoc-panel-header"><span class="exelidoc-brand"><img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" />Exelidoc <span class="exelidoc-product-label">Docs</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
-    <textarea class="exelidoc-query" placeholder="e.g. write a section, rewrite this, make it more concise"></textarea>
-    <div class="exelidoc-docs-note">Use Gmail emails as supporting context if helpful. Exelidoc will propose a full-document replacement for you to review.</div>
-    <div class="exelidoc-gmail-source-picker-slot"></div>
-    <button class="exelidoc-submit">Generate preview</button>
-    <section class="exelidoc-docs-preview" hidden>
-      <label for="exelidoc-docs-preview-text">Proposed full-document replacement</label>
-      <textarea class="exelidoc-docs-preview-text" readonly></textarea>
-      <div class="exelidoc-docs-preview-actions">
-        <button class="exelidoc-docs-apply" type="button">Apply to document</button>
-        <button class="exelidoc-docs-discard" type="button">Discard</button>
+    <div class="exelidoc-docs-tabs" role="tablist" aria-label="Docs tools">
+      <button id="exelidoc-docs-edit-tab" class="exelidoc-docs-tab" type="button" role="tab" aria-controls="exelidoc-docs-edit-pane" aria-selected="true" data-docs-pane="edit">Create &amp; edit</button>
+      <button id="exelidoc-docs-format-tab" class="exelidoc-docs-tab" type="button" role="tab" aria-controls="exelidoc-docs-format-pane" aria-selected="false" data-docs-pane="formatting">Formatting</button>
+    </div>
+    <section id="exelidoc-docs-edit-pane" class="exelidoc-docs-pane" role="tabpanel" aria-labelledby="exelidoc-docs-edit-tab" data-docs-panel="edit">
+      <textarea class="exelidoc-query" placeholder="e.g. write a section, rewrite this, make it more concise"></textarea>
+      <div class="exelidoc-docs-note">Use Gmail emails as supporting context if helpful. Exelidoc will propose a full-document replacement for you to review.</div>
+      <div class="exelidoc-gmail-source-picker-slot"></div>
+      <button class="exelidoc-submit">Generate preview</button>
+      <section class="exelidoc-docs-preview" hidden>
+        <label for="exelidoc-docs-preview-text">Proposed full-document replacement</label>
+        <textarea class="exelidoc-docs-preview-text" readonly></textarea>
+        <div class="exelidoc-docs-preview-actions">
+          <button class="exelidoc-docs-apply" type="button">Apply to document</button>
+          <button class="exelidoc-docs-discard" type="button">Discard</button>
+        </div>
+      </section>
+    </section>
+    <section id="exelidoc-docs-format-pane" class="exelidoc-docs-pane" role="tabpanel" aria-labelledby="exelidoc-docs-format-tab" data-docs-panel="formatting" hidden>
+      <p class="exelidoc-docs-note">Choose quick styles or describe a custom look. Formatting applies to the whole document and never replaces its text.</p>
+      <div class="exelidoc-sheet-format-grid" aria-label="Quick document formatting">
+        <button class="exelidoc-sheet-format-option" type="button" data-doc-format-option="title" aria-pressed="false">Style first paragraph as title</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-doc-format-option="body" aria-pressed="false">Readable body text</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-doc-format-option="center" aria-pressed="false">Center paragraphs</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-doc-format-option="justify" aria-pressed="false">Justify paragraphs</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-doc-format-option="spacing" aria-pressed="false">Add line spacing</button>
       </div>
+      <label for="exelidoc-docs-format-instruction">Describe any other formatting</label>
+      <textarea id="exelidoc-docs-format-instruction" class="exelidoc-docs-format-instruction" maxlength="2000" placeholder="e.g. Make section headings dark blue and bold, and set them to Heading 1"></textarea>
+      <button class="exelidoc-docs-format-preview-button" type="button">Preview formatting</button>
+      <section class="exelidoc-docs-format-preview" hidden>
+        <pre class="exelidoc-docs-format-summary"></pre>
+        <div class="exelidoc-docs-preview-actions">
+          <button class="exelidoc-sheet-format-apply exelidoc-docs-format-apply" type="button" disabled>Apply formatting</button>
+          <button class="exelidoc-sheet-format-discard exelidoc-docs-format-discard" type="button">Discard preview</button>
+        </div>
+      </section>
     </section>
     <button class="exelidoc-undo" hidden>Undo</button>
     <div class="exelidoc-status"></div>
@@ -81,13 +107,128 @@ function createExelidocPanel() {
   const undoEl = panel.querySelector(".exelidoc-undo");
   const statusEl = panel.querySelector(".exelidoc-status");
   const panelHeader = panel.querySelector(".exelidoc-panel-header");
+  const formattingInstructionEl = panel.querySelector(".exelidoc-docs-format-instruction");
+  const formattingPreviewButton = panel.querySelector(".exelidoc-docs-format-preview-button");
+  const formattingPreviewEl = panel.querySelector(".exelidoc-docs-format-preview");
+  const formattingSummaryEl = panel.querySelector(".exelidoc-docs-format-summary");
+  const formattingApplyButton = panel.querySelector(".exelidoc-docs-format-apply");
+  const formattingDiscardButton = panel.querySelector(".exelidoc-docs-format-discard");
+  const formattingOptionButtons = Array.from(panel.querySelectorAll("[data-doc-format-option]"));
+  const docsTabs = Array.from(panel.querySelectorAll(".exelidoc-docs-tab"));
+  const docsPanes = Array.from(panel.querySelectorAll(".exelidoc-docs-pane"));
   const gmailSourcePicker = window.ExelidocGmailSourcePicker.mount(
     panel.querySelector(".exelidoc-gmail-source-picker-slot")
   );
   let pendingPreview = null;
+  let pendingFormatting = null;
   let previousText = null;
   let undoRevisionId = null;
   panel.querySelector(".exelidoc-close").addEventListener("click", () => setDocsPanelOpen(false));
+  docsTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      docsTabs.forEach((candidate) => {
+        candidate.setAttribute("aria-selected", String(candidate === tab));
+      });
+      docsPanes.forEach((pane) => {
+        pane.hidden = pane.dataset.docsPanel !== tab.dataset.docsPane;
+      });
+    });
+  });
+  const clearFormattingPreview = () => {
+    pendingFormatting = null;
+    formattingPreviewEl.hidden = true;
+    formattingApplyButton.disabled = true;
+  };
+  formattingOptionButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const isPressed = button.getAttribute("aria-pressed") !== "true";
+      button.setAttribute("aria-pressed", String(isPressed));
+      if (isPressed && ["center", "justify"].includes(button.dataset.docFormatOption)) {
+        formattingOptionButtons
+          .filter((candidate) => (
+            candidate !== button
+            && ["center", "justify"].includes(candidate.dataset.docFormatOption)
+          ))
+          .forEach((candidate) => candidate.setAttribute("aria-pressed", "false"));
+      }
+      clearFormattingPreview();
+    });
+  });
+  formattingInstructionEl.addEventListener("input", clearFormattingPreview);
+  formattingPreviewButton.addEventListener("click", () => {
+    const documentId = getCurrentDocumentId();
+    const quickOptions = formattingOptionButtons
+      .filter((button) => button.getAttribute("aria-pressed") === "true")
+      .map((button) => button.dataset.docFormatOption);
+    const instruction = formattingInstructionEl.value.trim();
+    if (!documentId) {
+      statusEl.textContent = "Open a Google Docs document and try again.";
+      return;
+    }
+    if (!quickOptions.length && !instruction) {
+      statusEl.textContent = "Choose a quick style or describe the formatting you want.";
+      return;
+    }
+
+    formattingPreviewButton.disabled = true;
+    clearFormattingPreview();
+    statusEl.textContent = "Preparing formatting preview...";
+    chrome.runtime.sendMessage(
+      { type: "PREVIEW_GOOGLE_DOC_FORMATTING", documentId, quickOptions, instruction },
+      (response) => {
+        formattingPreviewButton.disabled = false;
+        if (chrome.runtime.lastError || !response?.ok) {
+          const error = response?.error || chrome.runtime.lastError?.message || "no response";
+          statusEl.textContent = error === "no_session"
+            ? "Sign in to Exelidoc from the toolbar popup first."
+            : `Could not create formatting preview: ${error}`;
+          return;
+        }
+        pendingFormatting = {
+          formatting: response.formatting,
+          revisionId: response.revisionId,
+        };
+        formattingSummaryEl.textContent = response.summary;
+        formattingPreviewEl.hidden = false;
+        formattingApplyButton.disabled = false;
+        statusEl.textContent = "Review the formatting preview. Your document has not been changed.";
+      }
+    );
+  });
+  formattingApplyButton.addEventListener("click", () => {
+    const documentId = getCurrentDocumentId();
+    if (!documentId || !pendingFormatting) {
+      statusEl.textContent = "Generate a new formatting preview before applying.";
+      return;
+    }
+    formattingApplyButton.disabled = true;
+    formattingDiscardButton.disabled = true;
+    statusEl.textContent = "Applying the reviewed formatting...";
+    chrome.runtime.sendMessage(
+      {
+        type: "APPLY_GOOGLE_DOC_FORMATTING",
+        documentId,
+        formatting: pendingFormatting.formatting,
+        revisionId: pendingFormatting.revisionId,
+      },
+      (response) => {
+        formattingApplyButton.disabled = false;
+        formattingDiscardButton.disabled = false;
+        if (chrome.runtime.lastError || !response?.ok) {
+          statusEl.textContent = `Could not apply formatting: ${response?.error || chrome.runtime.lastError?.message || "no response"}`;
+          return;
+        }
+        pendingFormatting = null;
+        formattingPreviewEl.hidden = true;
+        statusEl.textContent = "Done. The reviewed formatting was applied; document text was not changed.";
+      }
+    );
+  });
+  formattingDiscardButton.addEventListener("click", () => {
+    clearFormattingPreview();
+    formattingSummaryEl.textContent = "";
+    statusEl.textContent = "Formatting preview discarded. Your document was not changed.";
+  });
   const history = window.ExelidocHistory
     ? window.ExelidocHistory.mount(panel)
     : { refresh: () => {} };

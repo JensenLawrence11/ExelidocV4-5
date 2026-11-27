@@ -1726,6 +1726,325 @@ function assertPlainTextDocument(content = []) {
   }
 }
 
+function getGoogleDocumentParagraphs(document) {
+  const paragraphs = (document.body?.content || [])
+    .filter((item) => item.paragraph)
+    .map((item) => ({
+      startIndex: item.startIndex,
+      endIndex: item.endIndex,
+      text: (item.paragraph.elements || [])
+        .map((element) => element.textRun?.content || "")
+        .join("")
+        .replace(/\n$/, ""),
+    }));
+  if (
+    !paragraphs.length
+    || paragraphs.some((paragraph) => (
+      !Number.isInteger(paragraph.startIndex)
+      || !Number.isInteger(paragraph.endIndex)
+      || paragraph.startIndex < 1
+      || paragraph.endIndex <= paragraph.startIndex
+    ))
+  ) {
+    throw new Error("Google Docs did not return valid paragraph ranges to format.");
+  }
+  return paragraphs;
+}
+
+function mergeGoogleDocsFormatting(target, addition) {
+  const result = {
+    textStyle: { ...(target.textStyle || {}), ...(addition.textStyle || {}) },
+    paragraphStyle: { ...(target.paragraphStyle || {}), ...(addition.paragraphStyle || {}) },
+    paragraphStyles: [...(target.paragraphStyles || [])],
+  };
+  (addition.paragraphStyles || []).forEach((item) => {
+    const existing = result.paragraphStyles.find((entry) => entry.paragraphIndex === item.paragraphIndex);
+    if (!existing) {
+      result.paragraphStyles.push({
+        paragraphIndex: item.paragraphIndex,
+        ...(item.textStyle ? { textStyle: { ...item.textStyle } } : {}),
+        ...(item.paragraphStyle ? { paragraphStyle: { ...item.paragraphStyle } } : {}),
+      });
+      return;
+    }
+    if (item.textStyle) existing.textStyle = { ...(existing.textStyle || {}), ...item.textStyle };
+    if (item.paragraphStyle) {
+      existing.paragraphStyle = { ...(existing.paragraphStyle || {}), ...item.paragraphStyle };
+    }
+  });
+  if (!Object.keys(result.textStyle).length) delete result.textStyle;
+  if (!Object.keys(result.paragraphStyle).length) delete result.paragraphStyle;
+  if (!result.paragraphStyles.length) delete result.paragraphStyles;
+  return result;
+}
+
+function getGoogleDocsQuickFormatting(options) {
+  const allowedOptions = new Set(["title", "body", "center", "justify", "spacing"]);
+  if (
+    !Array.isArray(options)
+    || options.length > allowedOptions.size
+    || options.some((option) => !allowedOptions.has(option))
+    || new Set(options).size !== options.length
+  ) {
+    throw new Error("Choose valid Google Docs formatting options and try again.");
+  }
+
+  const formatting = { textStyle: {}, paragraphStyle: {}, paragraphStyles: [] };
+  if (options.includes("body")) {
+    Object.assign(formatting.textStyle, { fontFamily: "Arial", fontSize: 11 });
+    Object.assign(formatting.paragraphStyle, { namedStyleType: "NORMAL_TEXT", lineSpacing: 115 });
+  }
+  if (options.includes("center")) formatting.paragraphStyle.alignment = "CENTER";
+  if (options.includes("justify")) formatting.paragraphStyle.alignment = "JUSTIFIED";
+  if (options.includes("spacing")) formatting.paragraphStyle.lineSpacing = 150;
+  if (options.includes("title")) {
+    formatting.paragraphStyles.push({
+      paragraphIndex: 0,
+      textStyle: { fontSize: 24, bold: true },
+      paragraphStyle: { namedStyleType: "TITLE" },
+    });
+  }
+  return formatting;
+}
+
+function validateGoogleDocsFormatting(formatting, paragraphCount) {
+  const textFields = new Set([
+    "fontFamily", "fontSize", "foregroundColor", "bold", "italic", "underline", "strikethrough",
+  ]);
+  const paragraphFields = new Set(["namedStyleType", "alignment", "lineSpacing"]);
+  const fontFamilies = new Set([
+    "Arial", "Calibri", "Cambria", "Georgia", "Times New Roman",
+    "Verdana", "Roboto", "Lato", "Montserrat",
+  ]);
+  const namedStyles = new Set([
+    "NORMAL_TEXT", "TITLE", "SUBTITLE", "HEADING_1", "HEADING_2",
+    "HEADING_3", "HEADING_4", "HEADING_5", "HEADING_6",
+  ]);
+  const alignments = new Set(["START", "CENTER", "END", "JUSTIFIED"]);
+  const validTextStyle = (style) => (
+    style
+    && typeof style === "object"
+    && !Array.isArray(style)
+    && Object.keys(style).length > 0
+    && Object.keys(style).every((key) => textFields.has(key))
+    && (!("fontFamily" in style) || fontFamilies.has(style.fontFamily))
+    && (!("fontSize" in style) || (Number.isInteger(style.fontSize) && style.fontSize >= 8 && style.fontSize <= 36))
+    && (!("foregroundColor" in style) || (typeof style.foregroundColor === "string" && /^#[\da-f]{6}$/i.test(style.foregroundColor)))
+    && ["bold", "italic", "underline", "strikethrough"].every((key) => !(key in style) || typeof style[key] === "boolean")
+  );
+  const validParagraphStyle = (style) => (
+    style
+    && typeof style === "object"
+    && !Array.isArray(style)
+    && Object.keys(style).length > 0
+    && Object.keys(style).every((key) => paragraphFields.has(key))
+    && (!("namedStyleType" in style) || namedStyles.has(style.namedStyleType))
+    && (!("alignment" in style) || alignments.has(style.alignment))
+    && (!("lineSpacing" in style) || (Number.isInteger(style.lineSpacing) && style.lineSpacing >= 100 && style.lineSpacing <= 300))
+  );
+  if (
+    !formatting
+    || typeof formatting !== "object"
+    || Array.isArray(formatting)
+    || !Object.keys(formatting).length
+    || Object.keys(formatting).some((key) => !["textStyle", "paragraphStyle", "paragraphStyles"].includes(key))
+    || ("textStyle" in formatting && !validTextStyle(formatting.textStyle))
+    || ("paragraphStyle" in formatting && !validParagraphStyle(formatting.paragraphStyle))
+  ) {
+    throw new Error("The formatting preview is invalid. Generate it again and retry.");
+  }
+  if ("paragraphStyles" in formatting) {
+    const styles = formatting.paragraphStyles;
+    if (
+      !Array.isArray(styles)
+      || !styles.length
+      || styles.length > paragraphCount
+      || styles.some((item) => (
+        !item
+        || typeof item !== "object"
+        || Array.isArray(item)
+        || Object.keys(item).some((key) => !["paragraphIndex", "textStyle", "paragraphStyle"].includes(key))
+        || !Number.isInteger(item.paragraphIndex)
+        || item.paragraphIndex < 0
+        || item.paragraphIndex >= paragraphCount
+        || ("textStyle" in item && !validTextStyle(item.textStyle))
+        || ("paragraphStyle" in item && !validParagraphStyle(item.paragraphStyle))
+        || (!("textStyle" in item) && !("paragraphStyle" in item))
+      ))
+      || new Set(styles.map((item) => item.paragraphIndex)).size !== styles.length
+    ) {
+      throw new Error("The formatting preview contains an invalid paragraph target.");
+    }
+  }
+}
+
+function googleDocsTextStyle(style) {
+  const result = { ...style };
+  if (style.fontFamily) {
+    result.weightedFontFamily = { fontFamily: style.fontFamily };
+    delete result.fontFamily;
+  }
+  if (style.fontSize !== undefined) result.fontSize = { magnitude: style.fontSize, unit: "PT" };
+  if (style.foregroundColor) {
+    const hex = style.foregroundColor.slice(1);
+    result.foregroundColor = {
+      color: {
+        rgbColor: {
+          red: parseInt(hex.slice(0, 2), 16) / 255,
+          green: parseInt(hex.slice(2, 4), 16) / 255,
+          blue: parseInt(hex.slice(4, 6), 16) / 255,
+        },
+      },
+    };
+  }
+  return result;
+}
+
+function googleDocsTextStyleFields(style) {
+  return Object.keys(style)
+    .map((field) => field === "fontFamily" ? "weightedFontFamily" : field)
+    .join(",");
+}
+
+function buildGoogleDocsFormattingRequests(document, formatting) {
+  const paragraphs = getGoogleDocumentParagraphs(document);
+  validateGoogleDocsFormatting(formatting, paragraphs.length);
+  const firstIndex = paragraphs[0].startIndex;
+  const lastEndIndex = paragraphs[paragraphs.length - 1].endIndex;
+  if (!Number.isInteger(lastEndIndex) || lastEndIndex - 1 <= firstIndex) {
+    throw new Error("The document has no writable text range to format.");
+  }
+  const wholeDocumentRange = { startIndex: firstIndex, endIndex: lastEndIndex - 1 };
+  const requests = [];
+  const addStyleRequest = (textRange, paragraphRange, textStyle, paragraphStyle) => {
+    if (textStyle && Object.keys(textStyle).length) {
+      if (textRange.endIndex <= textRange.startIndex) {
+        throw new Error("The requested text has no writable range to format.");
+      }
+      requests.push({
+        updateTextStyle: {
+          range: textRange,
+          textStyle: googleDocsTextStyle(textStyle),
+          fields: googleDocsTextStyleFields(textStyle),
+        },
+      });
+    }
+    if (paragraphStyle && Object.keys(paragraphStyle).length) {
+      requests.push({
+        updateParagraphStyle: {
+          range: paragraphRange,
+          paragraphStyle,
+          fields: Object.keys(paragraphStyle).join(","),
+        },
+      });
+    }
+  };
+
+  addStyleRequest(wholeDocumentRange, wholeDocumentRange, formatting.textStyle, formatting.paragraphStyle);
+  (formatting.paragraphStyles || []).forEach((item) => {
+    const paragraph = paragraphs[item.paragraphIndex];
+    const textRange = {
+      startIndex: paragraph.startIndex,
+      endIndex: Math.min(paragraph.endIndex - 1, lastEndIndex - 1),
+    };
+    const paragraphRange = {
+      startIndex: paragraph.startIndex,
+      endIndex: Math.min(paragraph.endIndex, lastEndIndex),
+    };
+    addStyleRequest(textRange, paragraphRange, item.textStyle, item.paragraphStyle);
+  });
+  if (!requests.length) throw new Error("Choose at least one formatting change.");
+  return requests;
+}
+
+async function generateGoogleDocsFormatting(message, sender) {
+  const documentId = getDocsDocumentId(message, sender);
+  const options = message.quickOptions || [];
+  const instruction = typeof message.instruction === "string" ? message.instruction.trim() : "";
+  if (instruction.length > 2000) throw new Error("Formatting instructions must be 2,000 characters or fewer.");
+  if (!options.length && !instruction) throw new Error("Choose a quick style or describe the formatting you want.");
+
+  const accessToken = await getGoogleDocsAccessToken();
+  const document = await getGoogleDocument(documentId, accessToken);
+  assertPlainTextDocument(document.body?.content || []);
+  if (typeof document.revisionId !== "string") {
+    throw new Error("Google Docs did not return a document revision. Refresh and try again.");
+  }
+  const paragraphs = getGoogleDocumentParagraphs(document);
+  const quickFormatting = getGoogleDocsQuickFormatting(options);
+  let aiFormatting = {};
+  let notes = [];
+  if (instruction) {
+    const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
+    if (!sessionToken) throw new Error("no_session");
+    const sourceUrl = getGoogleSourceUrl(sender);
+    const response = await fetch(`${BACKEND_URL}/api/ai/format-document`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-Token": sessionToken,
+      },
+      body: JSON.stringify({
+        paragraphs: paragraphs.map((paragraph) => paragraph.text),
+        instruction,
+        source_url: sourceUrl,
+        source_urls: [sourceUrl],
+        source_refs: [{ provider: "google", kind: "google_document", id: documentId }],
+        client: "chrome",
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Exelidoc backend returned ${response.status}.`);
+    if (data.error) throw new Error(data.error);
+    if (!data.formatting || typeof data.formatting !== "object") {
+      throw new Error("Exelidoc returned an invalid formatting preview. Your document was not changed.");
+    }
+    aiFormatting = data.formatting;
+    notes = Array.isArray(data.notes) ? data.notes : [];
+  }
+  const formatting = mergeGoogleDocsFormatting(quickFormatting, aiFormatting);
+  validateGoogleDocsFormatting(formatting, paragraphs.length);
+  const summary = [
+    `Formatting will apply to the entire document (${paragraphs.length} paragraphs).`,
+    ...notes,
+  ].join("\n");
+  return { ok: true, formatting, revisionId: document.revisionId, summary };
+}
+
+async function applyGoogleDocsFormatting(message, sender) {
+  const documentId = getDocsDocumentId(message, sender);
+  if (typeof message.revisionId !== "string") {
+    throw new Error("The formatting preview is invalid. Generate it again and retry.");
+  }
+  const accessToken = await getGoogleDocsAccessToken();
+  const document = await getGoogleDocument(documentId, accessToken);
+  assertPlainTextDocument(document.body?.content || []);
+  if (typeof document.revisionId !== "string") {
+    throw new Error("Google Docs did not return a document revision. Refresh and try again.");
+  }
+  if (document.revisionId !== message.revisionId) {
+    throw new Error("The document changed after the formatting preview. Generate a new preview before applying it.");
+  }
+  const requests = buildGoogleDocsFormattingRequests(document, message.formatting);
+  const response = await fetch(`${GOOGLE_DOCS_API}/${encodeURIComponent(documentId)}:batchUpdate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      requests,
+      writeControl: { requiredRevisionId: document.revisionId },
+    }),
+  });
+  const result = await readGoogleApiResponse(response);
+  return {
+    ok: true,
+    formattingChanges: requests.length,
+    revisionId: result.writeControl?.requiredRevisionId || document.revisionId,
+  };
+}
+
 async function getGoogleDocument(documentId, accessToken) {
   const response = await fetch(`${GOOGLE_DOCS_API}/${encodeURIComponent(documentId)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -2154,6 +2473,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => {
         console.error("Exelidoc background: Google Docs request failed", error.message);
         sendResponse({ ok: false, error: error.message || "Google Docs request failed." });
+      });
+    return true;
+  }
+
+  if (message.type === "PREVIEW_GOOGLE_DOC_FORMATTING") {
+    generateGoogleDocsFormatting(message, sender)
+      .then(sendResponse)
+      .catch((error) => {
+        console.error("Exelidoc background: Google Docs formatting preview failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Google Docs formatting preview failed." });
+      });
+    return true;
+  }
+
+  if (message.type === "APPLY_GOOGLE_DOC_FORMATTING") {
+    applyGoogleDocsFormatting(message, sender)
+      .then(sendResponse)
+      .catch((error) => {
+        console.error("Exelidoc background: Google Docs formatting apply failed", error.message);
+        sendResponse({ ok: false, error: error.message || "Google Docs formatting failed." });
       });
     return true;
   }

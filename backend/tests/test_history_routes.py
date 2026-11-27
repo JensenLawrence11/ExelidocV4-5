@@ -256,3 +256,47 @@ def test_google_sheet_format_route_returns_plan_and_saves_instruction():
         "Format the amount as currency",
         None,
     )
+
+
+def test_google_docs_format_route_returns_plan_and_saves_instruction():
+    app = create_app()
+    paragraphs = ["Quarterly Report", "Revenue increased by 10%."]
+    formatting = {"paragraphStyles": [{
+        "paragraphIndex": 0,
+        "paragraphStyle": {"namedStyleType": "TITLE"},
+    }]}
+
+    with app.test_client() as client, patch(
+        "utils.auth_decorator.get_user_by_session_token", return_value=USER
+    ), patch("utils.auth_decorator.has_access", return_value=True), patch(
+        "utils.auth_decorator.check_and_consume_quota", return_value=(True, 49)
+    ), patch(
+        "routes.ai.format_google_document",
+        return_value={"formatting": formatting, "notes": []},
+    ) as format_document, patch("routes.ai.save_conversation") as save_history, patch(
+        "routes.ai.log_ai_usage"
+    ):
+        response = client.post(
+            "/api/ai/format-document",
+            json={
+                "paragraphs": paragraphs,
+                "instruction": "Style the title",
+                "source_url": "https://docs.google.com/document/d/doc-1/edit",
+                "source_urls": ["https://docs.google.com/document/d/doc-1/edit"],
+                "client": "chrome",
+            },
+            headers={"X-Session-Token": "session-1"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["formatting"] == formatting
+    format_document.assert_called_once_with(paragraphs, "Style the title", context=None)
+    save_history.assert_called_once_with(
+        "user-1",
+        "chrome",
+        "format-document",
+        "https://docs.google.com/document/d/doc-1/edit",
+        ["https://docs.google.com/document/d/doc-1/edit"],
+        "Style the title",
+        None,
+    )

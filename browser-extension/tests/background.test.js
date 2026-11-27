@@ -18,6 +18,7 @@ function documentSnapshot(revisionId, text = "Original text\n") {
     body: {
       content: [
         {
+          startIndex: 1,
           endIndex: text.length + 1,
           paragraph: {
             elements: [{ textRun: { content: text } }],
@@ -88,6 +89,22 @@ function createHarness({ documents, backendStatus = 200, backendData } = {}) {
         ok: backendStatus < 400,
         status: backendStatus,
         json: async () => backendData || { corrected: "Revised text", suggestions: [] },
+      };
+    }
+    if (url.endsWith("/api/ai/format-document")) {
+      return {
+        ok: backendStatus < 400,
+        status: backendStatus,
+        json: async () => backendData || {
+          formatting: {
+            paragraphStyles: [{
+              paragraphIndex: 0,
+              textStyle: { foregroundColor: "#1A237E", bold: true },
+              paragraphStyle: { namedStyleType: "TITLE" },
+            }],
+          },
+          notes: ["Styled the title."],
+        },
       };
     }
     throw new Error(`Unexpected request: ${url}`);
@@ -225,5 +242,68 @@ test("backend errors do not produce a document write", async () => {
 
   assert.equal(result.ok, false);
   assert.match(result.error, /AI provider is unavailable/);
+  assert.equal(harness.requests.some(({ url }) => url.includes(":batchUpdate")), false);
+});
+
+test("Google Docs formatting preview applies reviewed styles without replacing document text", async () => {
+  const harness = createHarness({
+    documents: [
+      documentSnapshot("rev-1", "Quarterly Report\n"),
+      documentSnapshot("rev-1", "Quarterly Report\n"),
+    ],
+  });
+  const preview = await harness.send({
+    type: "PREVIEW_GOOGLE_DOC_FORMATTING",
+    documentId: "doc-1",
+    quickOptions: ["title", "body"],
+    instruction: "",
+  });
+
+  assert.equal(preview.ok, true, preview.error);
+  assert.equal(preview.revisionId, "rev-1");
+  assert.equal(harness.requests.some(({ url }) => url.includes(":batchUpdate")), false);
+
+  const applied = await harness.send({
+    type: "APPLY_GOOGLE_DOC_FORMATTING",
+    documentId: "doc-1",
+    formatting: preview.formatting,
+    revisionId: preview.revisionId,
+  });
+  assert.equal(applied.ok, true, applied.error);
+  const write = harness.requests.find(({ url }) => url.includes(":batchUpdate"));
+  const body = JSON.parse(write.options.body);
+  assert.equal(body.writeControl.requiredRevisionId, "rev-1");
+  assert.equal(body.requests.some((request) => "insertText" in request || "deleteContentRange" in request), false);
+  assert.equal(body.requests.some((request) => request.updateTextStyle?.textStyle.weightedFontFamily?.fontFamily === "Arial"), true);
+  assert.equal(body.requests.some((request) => request.updateParagraphStyle?.paragraphStyle.namedStyleType === "TITLE"), true);
+  assert.equal(body.requests.some((request) => request.updateTextStyle?.textStyle.fontSize?.magnitude === 24), true);
+});
+
+test("custom Google Docs formatting is based on paragraphs and rejects stale previews", async () => {
+  const harness = createHarness({
+    documents: [
+      documentSnapshot("rev-1", "Quarterly Report\n"),
+      documentSnapshot("rev-2", "A newer document\n"),
+    ],
+  });
+  const preview = await harness.send({
+    type: "PREVIEW_GOOGLE_DOC_FORMATTING",
+    documentId: "doc-1",
+    quickOptions: [],
+    instruction: "Style the title in dark blue",
+  });
+
+  assert.equal(preview.ok, true, preview.error);
+  const request = harness.requests.find(({ url }) => url.endsWith("/api/ai/format-document"));
+  assert.deepEqual(JSON.parse(request.options.body).paragraphs, ["Quarterly Report"]);
+  const applied = await harness.send({
+    type: "APPLY_GOOGLE_DOC_FORMATTING",
+    documentId: "doc-1",
+    formatting: preview.formatting,
+    revisionId: preview.revisionId,
+  });
+
+  assert.equal(applied.ok, false);
+  assert.match(applied.error, /document changed after the formatting preview/i);
   assert.equal(harness.requests.some(({ url }) => url.includes(":batchUpdate")), false);
 });

@@ -7,6 +7,7 @@ from services.ai_service import (
     AIServiceError,
     MAX_CONTEXT_CHARS,
     edit_spreadsheet_range,
+    format_google_document,
     format_spreadsheet_range,
 )
 
@@ -99,3 +100,46 @@ def test_sheet_format_rejects_non_rectangular_ranges_without_provider_call():
 
     assert "same number of cells" in result["error"]
     call_provider.assert_not_called()
+
+
+def test_google_docs_format_returns_only_validated_document_styles():
+    paragraphs = ["Quarterly Report", "Revenue increased by 10%."]
+    provider_result = {
+        "formatting": {
+            "textStyle": {"fontFamily": "Georgia", "fontSize": 12},
+            "paragraphStyles": [{
+                "paragraphIndex": 0,
+                "textStyle": {"foregroundColor": "#1A237E", "bold": True},
+                "paragraphStyle": {"namedStyleType": "TITLE"},
+            }],
+        },
+        "notes": ["Styled the title and set a readable body font."],
+    }
+
+    with patch(
+        "services.ai_service._call_gemini",
+        return_value=json.dumps(provider_result),
+    ) as call_provider:
+        result = format_google_document(paragraphs, "Make the title blue and use a readable font")
+
+    assert result == provider_result
+    request_content = call_provider.call_args.args[1]
+    assert "Make the title blue" in request_content
+    assert json.dumps(paragraphs, ensure_ascii=False, separators=(",", ":")) in request_content
+
+
+def test_google_docs_format_rejects_out_of_range_paragraph_indexes():
+    with patch(
+        "services.ai_service._call_gemini",
+        return_value=json.dumps({
+            "formatting": {
+                "paragraphStyles": [{
+                    "paragraphIndex": 4,
+                    "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                }],
+            },
+            "notes": [],
+        }),
+    ):
+        with pytest.raises(AIServiceError, match="invalid formatting plan"):
+            format_google_document(["First paragraph"], "Make the last paragraph a heading")

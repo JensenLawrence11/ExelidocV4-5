@@ -15,9 +15,10 @@ currently provides:
   Google connection, the extension indexes Inbox messages locally every five
   minutes while the browser is running. It stores at most 20,000 body characters
   per message. The index is not uploaded automatically.
-- **Google Docs:** analyze or preview an edit to the active plain-text document.
-  The current edit flow replaces the document text and does not support tables
-  or embedded objects. You review the result before applying it.
+- **Google Docs:** analyze or preview an edit to the active plain-text document,
+  or use the separate Formatting tab for quick styles and custom formatting
+  instructions. Review formatting before applying it; formatting does not replace
+  document text. The Docs API flow does not support tables or embedded objects.
 - **Google Sheets:** select a cell range to create or edit cells, or open the
   separate Formatting tab for quick styles and custom formatting instructions.
   Preview formatting for the selected range or the entire active sheet before

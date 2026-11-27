@@ -171,7 +171,8 @@
   font-size: 11px;
 }
 
-.exelidoc-sheet-tabs {
+.exelidoc-sheet-tabs,
+.exelidoc-docs-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
@@ -179,7 +180,8 @@
   border-bottom: 1px solid #e1e6f0;
 }
 
-.exelidoc-sheet-tab {
+.exelidoc-sheet-tab,
+.exelidoc-docs-tab {
   padding: 8px 10px;
   border: 1px solid transparent;
   border-radius: 9px;
@@ -189,24 +191,29 @@
   cursor: pointer;
 }
 
-.exelidoc-sheet-tab[aria-selected="true"] {
+.exelidoc-sheet-tab[aria-selected="true"],
+.exelidoc-docs-tab[aria-selected="true"] {
   border-color: #ccd4fa;
   background: #eef0ff;
   color: #3448c5;
 }
 
-.exelidoc-sheet-pane {
+.exelidoc-sheet-pane,
+.exelidoc-docs-pane {
   display: flex;
   flex-direction: column;
   gap: 9px;
 }
 
 .exelidoc-sheet-pane[hidden],
-.exelidoc-sheet-format-preview[hidden] {
+.exelidoc-sheet-format-preview[hidden],
+.exelidoc-docs-pane[hidden],
+.exelidoc-docs-format-preview[hidden] {
   display: none !important;
 }
 
-.exelidoc-sheet-pane textarea {
+.exelidoc-sheet-pane textarea,
+.exelidoc-docs-pane textarea {
   width: 100%;
   min-height: 76px;
   max-height: 180px;
@@ -219,7 +226,8 @@
   font: 12px/1.45 Inter, "Segoe UI", Arial, sans-serif;
 }
 
-.exelidoc-sheet-pane textarea:focus {
+.exelidoc-sheet-pane textarea:focus,
+.exelidoc-docs-pane textarea:focus {
   border-color: #6878ed;
   box-shadow: 0 0 0 3px rgba(94, 112, 231, 0.14);
   outline: none;
@@ -252,6 +260,23 @@
 .exelidoc-docs-note {
   color: #5f6368;
   font-size: 11px;
+}
+
+.exelidoc-docs-format-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #e1e6f0;
+  border-radius: 10px;
+  background: #f8f9fc;
+}
+
+.exelidoc-docs-format-summary {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.5 Inter, "Segoe UI", Arial, sans-serif;
 }
 
 .exelidoc-docs-preview {
@@ -568,6 +593,7 @@
 
 .exelidoc-submit,
 .exelidoc-sheet-format-preview-button,
+.exelidoc-docs-format-preview-button,
 .exelidoc-gmail-source-picker button,
 .exelidoc-gmail-finder-form button {
   padding: 9px 15px;
@@ -578,6 +604,7 @@
 
 .exelidoc-submit:hover,
 .exelidoc-sheet-format-preview-button:hover,
+.exelidoc-docs-format-preview-button:hover,
 .exelidoc-gmail-source-picker button:hover,
 .exelidoc-gmail-finder-form button:hover {
   background: #3049c7;
@@ -585,6 +612,7 @@
 
 .exelidoc-submit:disabled,
 .exelidoc-sheet-format-preview-button:disabled,
+.exelidoc-docs-format-preview-button:disabled,
 .exelidoc-gmail-source-picker button:disabled,
 .exelidoc-gmail-finder-form button:disabled {
   background: #aeb8df;
