@@ -1,4 +1,4 @@
-/* Exelidoc suggestion panel — injected into Gmail and Google Docs via manifest.json */
+/* Exelidoc panels injected into Gmail, Docs, and Sheets via manifest.json */
 
 .exelidoc-panel {
   position: absolute;
@@ -171,6 +171,84 @@
   font-size: 11px;
 }
 
+.exelidoc-sheet-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e1e6f0;
+}
+
+.exelidoc-sheet-tab {
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #f3f5fa;
+  color: #536079;
+  font: 600 12px Inter, "Segoe UI", Arial, sans-serif;
+  cursor: pointer;
+}
+
+.exelidoc-sheet-tab[aria-selected="true"] {
+  border-color: #ccd4fa;
+  background: #eef0ff;
+  color: #3448c5;
+}
+
+.exelidoc-sheet-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.exelidoc-sheet-pane[hidden],
+.exelidoc-sheet-format-preview[hidden] {
+  display: none !important;
+}
+
+.exelidoc-sheet-pane textarea {
+  width: 100%;
+  min-height: 76px;
+  max-height: 180px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid #dce2ed;
+  border-radius: 10px;
+  background: #fbfcff;
+  color: #17233c;
+  font: 12px/1.45 Inter, "Segoe UI", Arial, sans-serif;
+}
+
+.exelidoc-sheet-pane textarea:focus {
+  border-color: #6878ed;
+  box-shadow: 0 0 0 3px rgba(94, 112, 231, 0.14);
+  outline: none;
+}
+
+.exelidoc-sheet-format-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.exelidoc-sheet-format-option {
+  min-height: 38px;
+  padding: 7px 8px;
+  border: 1px solid #dce2ed;
+  border-radius: 9px;
+  background: #fff;
+  color: #4a5870;
+  font: 600 11px Inter, "Segoe UI", Arial, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.exelidoc-sheet-format-option[aria-pressed="true"] {
+  border-color: #8795ee;
+  background: #f0f2ff;
+  color: #3448c5;
+}
+
 .exelidoc-docs-note {
   color: #5f6368;
   font-size: 11px;
@@ -213,7 +291,9 @@
 }
 
 .exelidoc-docs-apply,
-.exelidoc-docs-discard {
+.exelidoc-docs-discard,
+.exelidoc-sheet-format-apply,
+.exelidoc-sheet-format-discard {
   padding: 6px 10px;
   border: 1px solid #dadce0;
   border-radius: 4px;
@@ -226,6 +306,18 @@
   border-color: #1a73e8;
   background: #1a73e8;
   color: #fff;
+}
+
+.exelidoc-sheet-format-apply {
+  border-color: #3049c7;
+  background: #3049c7;
+  color: #fff;
+  cursor: pointer;
+}
+
+.exelidoc-sheet-format-apply:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .exelidoc-docs-apply:disabled,
@@ -475,6 +567,7 @@
 }
 
 .exelidoc-submit,
+.exelidoc-sheet-format-preview-button,
 .exelidoc-gmail-source-picker button,
 .exelidoc-gmail-finder-form button {
   padding: 9px 15px;
@@ -484,12 +577,14 @@
 }
 
 .exelidoc-submit:hover,
+.exelidoc-sheet-format-preview-button:hover,
 .exelidoc-gmail-source-picker button:hover,
 .exelidoc-gmail-finder-form button:hover {
   background: #3049c7;
 }
 
 .exelidoc-submit:disabled,
+.exelidoc-sheet-format-preview-button:disabled,
 .exelidoc-gmail-source-picker button:disabled,
 .exelidoc-gmail-finder-form button:disabled {
   background: #aeb8df;

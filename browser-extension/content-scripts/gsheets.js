@@ -3,6 +3,7 @@ let sheetLauncher = null;
 let sheetInfo = null;
 let sheetSnapshot = null;
 let sheetProposal = null;
+let sheetFormattingProposal = null;
 const EXELIDOC_LOGO_URL = chrome.runtime.getURL("icons/favicon.ico");
 
 function getCurrentSpreadsheetId() {
@@ -79,7 +80,10 @@ function ensureSheetLauncher() {
       sheetInfo = null;
       sheetSnapshot = null;
       sheetProposal = null;
+      sheetFormattingProposal = null;
       sheetPanel.querySelector(".exelidoc-sheet-selection").textContent = "No cells selected for Exelidoc.";
+      sheetPanel.querySelector(".exelidoc-sheet-preview").hidden = true;
+      sheetPanel.querySelector(".exelidoc-sheet-format-preview").hidden = true;
       await loadSheetInfo();
     }
   });
@@ -92,23 +96,64 @@ function createSheetPanel() {
   panel.className = "exelidoc-panel docs-mode exelidoc-sheet-panel";
   panel.innerHTML = `
     <div class="exelidoc-panel-header"><span class="exelidoc-brand"><img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" />Exelidoc <span class="exelidoc-product-label">Sheets</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
-    <div class="exelidoc-docs-note">Highlight cells in the sheet, then choose them for Exelidoc. Describe what to make or change. Nothing is written until you review and apply the preview.</div>
-    <div class="exelidoc-gmail-source-picker-slot"></div>
+    <div class="exelidoc-docs-note">Select cells, then use Create &amp; edit or Formatting. Review each preview before applying it.</div>
     <div class="exelidoc-sheet-selection" aria-live="polite">No cells selected for Exelidoc.</div>
     <button class="exelidoc-sheet-load" type="button">Select highlighted cells</button>
-    <label for="exelidoc-sheet-instruction">What would you like to make or change?</label>
-    <textarea id="exelidoc-sheet-instruction" maxlength="10000" placeholder="e.g. Create a monthly budget table, add totals, or update the selected cells"></textarea>
-    <button class="exelidoc-submit" type="button">Generate preview</button>
-    <section class="exelidoc-sheet-preview" hidden>
-      <pre class="exelidoc-sheet-changes"></pre>
-      <label class="exelidoc-sheet-formula-confirm" hidden>
-        <input type="checkbox" />
-        I reviewed and approve the formula changes shown above.
-      </label>
-      <div class="exelidoc-docs-preview-actions">
-        <button class="exelidoc-sheet-apply" type="button" disabled>Apply approved changes</button>
-        <button class="exelidoc-sheet-discard" type="button">Discard preview</button>
+    <div class="exelidoc-sheet-tabs" role="tablist" aria-label="Sheets tools">
+      <button id="exelidoc-sheet-edit-tab" class="exelidoc-sheet-tab" type="button" role="tab" aria-controls="exelidoc-sheet-edit-pane" aria-selected="true" data-sheet-pane="edit">Create &amp; edit</button>
+      <button id="exelidoc-sheet-format-tab" class="exelidoc-sheet-tab" type="button" role="tab" aria-controls="exelidoc-sheet-format-pane" aria-selected="false" data-sheet-pane="formatting">Formatting</button>
+    </div>
+    <section id="exelidoc-sheet-edit-pane" class="exelidoc-sheet-pane" role="tabpanel" aria-labelledby="exelidoc-sheet-edit-tab" data-sheet-panel="edit">
+      <label for="exelidoc-sheet-instruction">What would you like to make or change?</label>
+      <textarea id="exelidoc-sheet-instruction" maxlength="10000" placeholder="e.g. Create a monthly budget table, add totals, or update the selected cells"></textarea>
+      <div class="exelidoc-gmail-source-picker-slot"></div>
+      <button class="exelidoc-submit" type="button">Generate preview</button>
+      <section class="exelidoc-sheet-preview" hidden>
+        <pre class="exelidoc-sheet-changes"></pre>
+        <label class="exelidoc-sheet-formula-confirm" hidden>
+          <input type="checkbox" />
+          I reviewed and approve the formula changes shown above.
+        </label>
+        <div class="exelidoc-docs-preview-actions">
+          <button class="exelidoc-sheet-apply" type="button" disabled>Apply approved changes</button>
+          <button class="exelidoc-sheet-discard" type="button">Discard preview</button>
+        </div>
+      </section>
+    </section>
+    <section id="exelidoc-sheet-format-pane" class="exelidoc-sheet-pane exelidoc-sheet-format-pane" role="tabpanel" aria-labelledby="exelidoc-sheet-format-tab" data-sheet-panel="formatting" hidden>
+      <p class="exelidoc-docs-note">Choose quick formats, or describe a custom style. Review the preview before applying.</p>
+      <label for="exelidoc-sheet-format-scope">Apply formatting to</label>
+      <select id="exelidoc-sheet-format-scope">
+        <option value="range">Highlighted range</option>
+        <option value="sheet">Entire active sheet</option>
+      </select>
+      <div class="exelidoc-sheet-format-grid" aria-label="Quick formatting options">
+        <button class="exelidoc-sheet-format-option" type="button" data-format-option="headerStyle" aria-pressed="false">Style header row</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-format-option="alternatingRows" aria-pressed="false">Alternating row colors</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-format-option="freezeHeaderRow" aria-pressed="false">Freeze header row</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-format-option="autoResizeColumns" aria-pressed="false">Auto-fit columns</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-format-option="numberFormat" aria-pressed="false">Number format</button>
+        <button class="exelidoc-sheet-format-option" type="button" data-format-option="borders" aria-pressed="false">Add borders</button>
       </div>
+      <div class="exelidoc-sheet-number-format-control" hidden>
+        <label for="exelidoc-sheet-number-format">Number style</label>
+        <select id="exelidoc-sheet-number-format">
+          <option value="CURRENCY">Currency</option>
+          <option value="PERCENT">Percent</option>
+          <option value="DATE">Date</option>
+          <option value="NUMBER">Number</option>
+        </select>
+      </div>
+      <label for="exelidoc-sheet-format-instruction">Describe any other formatting</label>
+      <textarea id="exelidoc-sheet-format-instruction" maxlength="2000" placeholder="e.g. Use a dark blue header with bold white text and center the headings"></textarea>
+      <button class="exelidoc-sheet-format-preview-button" type="button">Preview formatting</button>
+      <section class="exelidoc-sheet-format-preview" hidden>
+        <pre class="exelidoc-sheet-format-changes"></pre>
+        <div class="exelidoc-docs-preview-actions">
+          <button class="exelidoc-sheet-format-apply" type="button" disabled>Apply formatting</button>
+          <button class="exelidoc-sheet-format-discard" type="button">Discard preview</button>
+        </div>
+      </section>
     </section>
     <div class="exelidoc-status" role="status" aria-live="polite"></div>
     <details class="exelidoc-history">
@@ -131,6 +176,18 @@ function createSheetPanel() {
   const formulaCheckbox = formulaLabel.querySelector("input");
   const applyButton = panel.querySelector(".exelidoc-sheet-apply");
   const discardButton = panel.querySelector(".exelidoc-sheet-discard");
+  const formatInstructionInput = panel.querySelector("#exelidoc-sheet-format-instruction");
+  const formatScopeInput = panel.querySelector("#exelidoc-sheet-format-scope");
+  const numberFormatInput = panel.querySelector("#exelidoc-sheet-number-format");
+  const formatPreviewButton = panel.querySelector(".exelidoc-sheet-format-preview-button");
+  const formatPreviewSection = panel.querySelector(".exelidoc-sheet-format-preview");
+  const formatChangesPre = panel.querySelector(".exelidoc-sheet-format-changes");
+  const formatApplyButton = panel.querySelector(".exelidoc-sheet-format-apply");
+  const formatDiscardButton = panel.querySelector(".exelidoc-sheet-format-discard");
+  const formatOptionButtons = Array.from(panel.querySelectorAll(".exelidoc-sheet-format-option"));
+  const sheetTabs = Array.from(panel.querySelectorAll(".exelidoc-sheet-tab"));
+  const sheetPanes = Array.from(panel.querySelectorAll(".exelidoc-sheet-pane"));
+  const numberFormatControl = panel.querySelector(".exelidoc-sheet-number-format-control");
   const gmailSourcePicker = window.ExelidocGmailSourcePicker.mount(
     panel.querySelector(".exelidoc-gmail-source-picker-slot")
   );
@@ -139,6 +196,26 @@ function createSheetPanel() {
     : { refresh() {} };
 
   panel.querySelector(".exelidoc-close").addEventListener("click", () => setSheetPanelOpen(false));
+  sheetTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const activePane = tab.dataset.sheetPane;
+      sheetTabs.forEach((candidate) => {
+        candidate.setAttribute("aria-selected", String(candidate === tab));
+      });
+      sheetPanes.forEach((pane) => {
+        pane.hidden = pane.dataset.sheetPanel !== activePane;
+      });
+    });
+  });
+  formatOptionButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const isPressed = button.getAttribute("aria-pressed") === "true";
+      button.setAttribute("aria-pressed", String(!isPressed));
+      if (button.dataset.formatOption === "numberFormat") {
+        numberFormatControl.hidden = isPressed;
+      }
+    });
+  });
   formulaCheckbox.addEventListener("change", updateApplyButton);
   loadButton.addEventListener("click", async () => {
     const spreadsheetId = getCurrentSpreadsheetId();
@@ -154,8 +231,10 @@ function createSheetPanel() {
     }
     loadButton.disabled = true;
     previewSection.hidden = true;
+    formatPreviewSection.hidden = true;
     sheetSnapshot = null;
     sheetProposal = null;
+    sheetFormattingProposal = null;
     selectionLabel.textContent = "No cells selected for Exelidoc.";
     status.textContent = `Reading ${sheetTitle}!${range}...`;
     try {
@@ -167,6 +246,7 @@ function createSheetPanel() {
       });
       sheetSnapshot = response.snapshot;
       sheetProposal = null;
+      sheetFormattingProposal = null;
       selectionLabel.textContent = `Selected for Exelidoc: ${sheetTitle}!${range}`;
       status.textContent = `${sheetSnapshot.dimensions.rowCount} row(s) by ${sheetSnapshot.dimensions.columnCount} column(s) ready.`;
     } catch (error) {
@@ -243,6 +323,81 @@ function createSheetPanel() {
     status.textContent = "Preview discarded. The spreadsheet was not changed.";
   });
 
+  formatPreviewButton.addEventListener("click", async () => {
+    if (!sheetSnapshot) {
+      status.textContent = "Select highlighted cells before previewing formatting.";
+      return;
+    }
+    const options = { scope: formatScopeInput.value };
+    formatOptionButtons.forEach((button) => {
+      if (button.getAttribute("aria-pressed") !== "true") return;
+      const option = button.dataset.formatOption;
+      options[option] = option === "numberFormat" ? numberFormatInput.value : true;
+    });
+    const instruction = formatInstructionInput.value.trim();
+    if (!instruction && !Object.keys(options).some((key) => key !== "scope")) {
+      status.textContent = "Choose a quick format or describe the style you want.";
+      return;
+    }
+
+    formatPreviewButton.disabled = true;
+    formatPreviewSection.hidden = true;
+    status.textContent = instruction
+      ? "Creating a formatting preview with Gemini..."
+      : "Preparing the formatting preview...";
+    try {
+      const response = await sendRuntimeMessage({
+        type: "GENERATE_GOOGLE_SHEET_FORMATTING",
+        snapshot: JSON.parse(JSON.stringify(sheetSnapshot)),
+        instruction,
+        options,
+      });
+      sheetFormattingProposal = {
+        snapshot: JSON.parse(JSON.stringify(sheetSnapshot)),
+        formatting: response.formatting,
+        scope: response.scope,
+        notes: response.notes || [],
+      };
+      renderFormattingProposal(sheetFormattingProposal);
+      status.textContent = "Review the formatting preview. Nothing has been written.";
+      if (instruction) history.refresh();
+    } catch (error) {
+      status.textContent = permissionMessage(error);
+    } finally {
+      formatPreviewButton.disabled = false;
+    }
+  });
+
+  formatApplyButton.addEventListener("click", async () => {
+    if (!sheetFormattingProposal) return;
+    formatApplyButton.disabled = true;
+    status.textContent = "Checking the selected cells and applying formatting...";
+    try {
+      const response = await sendRuntimeMessage({
+        type: "APPLY_GOOGLE_SHEET_FORMATTING",
+        snapshot: sheetFormattingProposal.snapshot,
+        formatting: sheetFormattingProposal.formatting,
+        scope: sheetFormattingProposal.scope,
+      });
+      sheetFormattingProposal = null;
+      formatPreviewSection.hidden = true;
+      formatInstructionInput.value = "";
+      formatOptionButtons.forEach((button) => button.setAttribute("aria-pressed", "false"));
+      numberFormatControl.hidden = true;
+      status.textContent = `Applied ${response.formattingChanges} formatting change(s).`;
+    } catch (error) {
+      status.textContent = permissionMessage(error);
+    } finally {
+      formatApplyButton.disabled = !sheetFormattingProposal;
+    }
+  });
+
+  formatDiscardButton.addEventListener("click", () => {
+    sheetFormattingProposal = null;
+    formatPreviewSection.hidden = true;
+    status.textContent = "Formatting preview discarded. The spreadsheet was not changed.";
+  });
+
   function renderProposal(correctedValues) {
     if (
       !Array.isArray(correctedValues)
@@ -277,6 +432,56 @@ function createSheetPanel() {
   function updateApplyButton() {
     applyButton.disabled = !sheetProposal?.hasChanges
       || (sheetProposal.formulaChanges > 0 && !formulaCheckbox.checked);
+  }
+
+  function renderFormattingProposal(proposal) {
+    const firstSelectedRow = proposal.snapshot.range.match(/^[A-Z]+(\d+)/i)?.[1] || "1";
+    const labels = {
+      headerStyle: "Style the first row as a header",
+      alternatingRows: "Add alternating row colors",
+      freezeHeaderRow: proposal.scope === "sheet"
+        ? "Freeze through row 1"
+        : `Freeze through row ${firstSelectedRow}`,
+      autoResizeColumns: "Auto-fit the target columns",
+      borders: "Add borders",
+      bold: "Set selected text to bold",
+      italic: "Set selected text to italic",
+      wrapText: "Wrap selected cell text",
+    };
+    const disabledLabels = {
+      bold: "Remove bold from selected text",
+      italic: "Remove italics from selected text",
+      wrapText: "Turn off text wrapping",
+    };
+    const changes = [
+      `Target: ${proposal.scope === "sheet" ? "entire active sheet" : "highlighted range"}`,
+    ];
+    Object.entries(proposal.formatting).forEach(([key, value]) => {
+      if (value == null) return;
+      if (value === false) {
+        if (disabledLabels[key]) changes.push(disabledLabels[key]);
+        return;
+      }
+      if (key === "numberFormat") {
+        changes.push(`Set number format to ${value.toLowerCase()}`);
+      } else if (key === "fontSize" || key === "headerFontSize") {
+        changes.push(`Set ${key === "fontSize" ? "selected text" : "header"} font size to ${value}`);
+      } else if (key === "headerBackgroundColor" || key === "backgroundColor") {
+        changes.push(`Set ${key === "headerBackgroundColor" ? "header" : "cell"} background to ${value}`);
+      } else if (key === "headerTextColor" || key === "textColor") {
+        changes.push(`Set ${key === "headerTextColor" ? "header" : "cell"} text color to ${value}`);
+      } else if (key === "headerAlignment" || key === "horizontalAlignment") {
+        changes.push(`Align ${key === "headerAlignment" ? "header" : "selected cells"} ${value.toLowerCase()}`);
+      } else if (key === "headerStyle") {
+        changes.push(labels[key]);
+      } else if (labels[key]) {
+        changes.push(labels[key]);
+      }
+    });
+    proposal.notes.forEach((note) => changes.push(note));
+    formatChangesPre.textContent = changes.join("\n");
+    formatApplyButton.disabled = false;
+    formatPreviewSection.hidden = false;
   }
 
   document.body.appendChild(panel);

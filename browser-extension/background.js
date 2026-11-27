@@ -940,7 +940,7 @@ async function getGoogleSheetMetadata(spreadsheetId, accessToken) {
     throw new Error("The selected spreadsheet could not be verified.");
   }
   return googleApiRequest(
-    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=properties(title),sheets(properties(sheetId,title))`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=properties(title),sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)),bandedRanges(bandedRangeId,range))`,
     accessToken
   );
 }
@@ -980,6 +980,7 @@ async function getGoogleSheetInfo(message, sender) {
     sheets: (metadata.sheets || []).map((sheet) => ({
       title: sheet.properties?.title,
       sheetId: sheet.properties?.sheetId,
+      gridProperties: sheet.properties?.gridProperties,
     })).filter((sheet) => sheet.title),
     url: getGoogleSheetUrl(spreadsheetId),
   };
@@ -1204,6 +1205,469 @@ async function applyGoogleSheetEdit(message, sender) {
     }
   ));
   return { ok: true, updatedCells: updates.length, formulaChanges };
+}
+
+const GOOGLE_SHEET_FORMAT_ENUMS = {
+  headerAlignment: ["LEFT", "CENTER", "RIGHT"],
+  horizontalAlignment: ["LEFT", "CENTER", "RIGHT"],
+  numberFormat: ["CURRENCY", "PERCENT", "DATE", "NUMBER"],
+};
+
+const GOOGLE_SHEET_FORMAT_BOOLS = [
+  "headerStyle",
+  "alternatingRows",
+  "freezeHeaderRow",
+  "autoResizeColumns",
+  "borders",
+  "bold",
+  "italic",
+  "wrapText",
+];
+
+const GOOGLE_SHEET_FORMAT_COLORS = [
+  "headerBackgroundColor",
+  "headerTextColor",
+  "textColor",
+  "backgroundColor",
+];
+
+const GOOGLE_SHEET_FORMAT_SIZES = ["headerFontSize", "fontSize"];
+
+function validateGoogleSheetFormatting(formatting, requireChanges = true) {
+  if (!formatting || typeof formatting !== "object" || Array.isArray(formatting)) {
+    throw new Error("The formatting preview is invalid. Generate it again.");
+  }
+  const allowedFields = new Set([
+    ...GOOGLE_SHEET_FORMAT_BOOLS,
+    ...GOOGLE_SHEET_FORMAT_COLORS,
+    ...GOOGLE_SHEET_FORMAT_SIZES,
+    ...Object.keys(GOOGLE_SHEET_FORMAT_ENUMS),
+  ]);
+  if (Object.keys(formatting).some((key) => !allowedFields.has(key))) {
+    throw new Error("The formatting preview contains unsupported changes.");
+  }
+  GOOGLE_SHEET_FORMAT_BOOLS.forEach((key) => {
+    if (key in formatting && typeof formatting[key] !== "boolean") {
+      throw new Error("The formatting preview contains an invalid option.");
+    }
+  });
+  GOOGLE_SHEET_FORMAT_COLORS.forEach((key) => {
+    if (key in formatting && (
+      typeof formatting[key] !== "string"
+      || !/^#[0-9a-f]{6}$/i.test(formatting[key])
+    )) {
+      throw new Error("The formatting preview contains an invalid color.");
+    }
+  });
+  GOOGLE_SHEET_FORMAT_SIZES.forEach((key) => {
+    if (key in formatting && (
+      !Number.isInteger(formatting[key])
+      || formatting[key] < 8
+      || formatting[key] > 24
+    )) {
+      throw new Error("The formatting preview contains an invalid font size.");
+    }
+  });
+  Object.entries(GOOGLE_SHEET_FORMAT_ENUMS).forEach(([key, choices]) => {
+    if (key in formatting && !choices.includes(formatting[key])) {
+      throw new Error("The formatting preview contains an unsupported format.");
+    }
+  });
+  const hasChanges = Object.entries(formatting).some(([key, value]) => (
+    GOOGLE_SHEET_FORMAT_BOOLS.includes(key) ? value === true : value != null
+  ));
+  if (requireChanges && !hasChanges) {
+    throw new Error("Choose a formatting option or describe a custom format.");
+  }
+  return formatting;
+}
+
+function googleSheetRgb(hex) {
+  const value = hex.replace("#", "");
+  return {
+    red: parseInt(value.slice(0, 2), 16) / 255,
+    green: parseInt(value.slice(2, 4), 16) / 255,
+    blue: parseInt(value.slice(4, 6), 16) / 255,
+  };
+}
+
+function googleSheetNumberFormat(value) {
+  const formats = {
+    CURRENCY: { type: "CURRENCY" },
+    PERCENT: { type: "PERCENT", pattern: "0.00%" },
+    DATE: { type: "DATE", pattern: "yyyy-mm-dd" },
+    NUMBER: { type: "NUMBER", pattern: "#,##0.##" },
+  };
+  return formats[value];
+}
+
+function googleSheetFormatCellFields(formatting, header = false) {
+  const userEnteredFormat = {};
+  const fields = [];
+  const addField = (path) => fields.push(`userEnteredFormat.${path}`);
+  const color = (key) => (
+    formatting[key] ? googleSheetRgb(formatting[key]) : undefined
+  );
+  const textFormat = {};
+
+  if (header) {
+    if (formatting.headerStyle === true) {
+      userEnteredFormat.backgroundColor = googleSheetRgb(
+        formatting.headerBackgroundColor || "#3548C8"
+      );
+      textFormat.bold = true;
+      textFormat.foregroundColor = googleSheetRgb(formatting.headerTextColor || "#FFFFFF");
+      addField("backgroundColor");
+      addField("textFormat.bold");
+      addField("textFormat.foregroundColor");
+    } else {
+      if (formatting.headerBackgroundColor) {
+        userEnteredFormat.backgroundColor = color("headerBackgroundColor");
+        addField("backgroundColor");
+      }
+      if (formatting.headerTextColor) {
+        textFormat.foregroundColor = color("headerTextColor");
+        addField("textFormat.foregroundColor");
+      }
+    }
+    if (formatting.headerFontSize) {
+      textFormat.fontSize = formatting.headerFontSize;
+      addField("textFormat.fontSize");
+    }
+    if (formatting.headerAlignment) {
+      userEnteredFormat.horizontalAlignment = formatting.headerAlignment;
+      addField("horizontalAlignment");
+    }
+  } else {
+    if ("bold" in formatting) {
+      textFormat.bold = formatting.bold;
+      addField("textFormat.bold");
+    }
+    if ("italic" in formatting) {
+      textFormat.italic = formatting.italic;
+      addField("textFormat.italic");
+    }
+    if (formatting.fontSize) {
+      textFormat.fontSize = formatting.fontSize;
+      addField("textFormat.fontSize");
+    }
+    if (formatting.textColor) {
+      textFormat.foregroundColor = color("textColor");
+      addField("textFormat.foregroundColor");
+    }
+    if (formatting.backgroundColor) {
+      userEnteredFormat.backgroundColor = color("backgroundColor");
+      addField("backgroundColor");
+    }
+    if (formatting.horizontalAlignment) {
+      userEnteredFormat.horizontalAlignment = formatting.horizontalAlignment;
+      addField("horizontalAlignment");
+    }
+    if ("wrapText" in formatting) {
+      userEnteredFormat.wrapStrategy = formatting.wrapText ? "WRAP" : "OVERFLOW_CELL";
+      addField("wrapStrategy");
+    }
+    if (formatting.numberFormat) {
+      userEnteredFormat.numberFormat = googleSheetNumberFormat(formatting.numberFormat);
+      addField("numberFormat");
+    }
+    if (formatting.borders) {
+      const border = {
+        style: "SOLID",
+        color: googleSheetRgb("#DADCE0"),
+      };
+      userEnteredFormat.borders = {
+        top: border,
+        bottom: border,
+        left: border,
+        right: border,
+      };
+      addField("borders");
+    }
+  }
+
+  if (Object.keys(textFormat).length) {
+    userEnteredFormat.textFormat = textFormat;
+  }
+  if (!fields.length) return null;
+  return { userEnteredFormat, fields: [...new Set(fields)] };
+}
+
+function gridRangesOverlap(first, second) {
+  return first.sheetId === second.sheetId
+    && (first.startRowIndex || 0) < (second.endRowIndex ?? Infinity)
+    && (second.startRowIndex || 0) < (first.endRowIndex ?? Infinity)
+    && (first.startColumnIndex || 0) < (second.endColumnIndex ?? Infinity)
+    && (second.startColumnIndex || 0) < (first.endColumnIndex ?? Infinity);
+}
+
+function sameGoogleSheetGridRange(first, second) {
+  return first.sheetId === second.sheetId
+    && (first.startRowIndex || 0) === (second.startRowIndex || 0)
+    && (first.endRowIndex ?? null) === (second.endRowIndex ?? null)
+    && (first.startColumnIndex || 0) === (second.startColumnIndex || 0)
+    && (first.endColumnIndex ?? null) === (second.endColumnIndex ?? null);
+}
+
+function getGoogleSheetFormatRange(sheet, snapshot, scope) {
+  if (scope === "sheet") {
+    const grid = sheet.properties?.gridProperties;
+    if (!Number.isInteger(grid?.rowCount) || !Number.isInteger(grid?.columnCount)) {
+      throw new Error("The active sheet size could not be verified. Reload and try again.");
+    }
+    return {
+      sheetId: sheet.properties.sheetId,
+      startRowIndex: 0,
+      endRowIndex: grid.rowCount,
+      startColumnIndex: 0,
+      endColumnIndex: grid.columnCount,
+    };
+  }
+  if (scope !== "range") {
+    throw new Error("Choose the highlighted range or the entire active sheet.");
+  }
+  const dimensions = parseGoogleSheetRange(snapshot.range);
+  return {
+    sheetId: sheet.properties.sheetId,
+    startRowIndex: dimensions.startRow - 1,
+    endRowIndex: dimensions.startRow - 1 + dimensions.rowCount,
+    startColumnIndex: dimensions.startColumn - 1,
+    endColumnIndex: dimensions.startColumn - 1 + dimensions.columnCount,
+  };
+}
+
+function buildGoogleSheetFormattingRequests(sheet, snapshot, scope, formatting) {
+  validateGoogleSheetFormatting(formatting);
+  const range = getGoogleSheetFormatRange(sheet, snapshot, scope);
+  const requests = [];
+  let bandingRequest = null;
+
+  if (formatting.alternatingRows) {
+    const banding = {
+      headerColor: formatting.headerStyle === true
+        ? googleSheetRgb(formatting.headerBackgroundColor || "#3548C8")
+        : undefined,
+      firstBandColor: googleSheetRgb("#FFFFFF"),
+      secondBandColor: googleSheetRgb("#EEF1FF"),
+    };
+    Object.keys(banding).forEach((key) => {
+      if (banding[key] === undefined) delete banding[key];
+    });
+    const overlaps = (sheet.bandedRanges || [])
+      .filter((item) => item.range && gridRangesOverlap(item.range, range));
+    if (overlaps.length > 1 || overlaps.some((item) => !sameGoogleSheetGridRange(item.range, range))) {
+      throw new Error("Alternating colors overlap existing banding. Remove the existing banding in Google Sheets first.");
+    }
+    if (overlaps.length === 1) {
+      const bandedRangeId = overlaps[0].bandedRangeId;
+      if (!Number.isInteger(bandedRangeId)) {
+        throw new Error("Existing alternating colors could not be verified. Remove them in Google Sheets and retry.");
+      }
+      bandingRequest = {
+        updateBanding: {
+          bandedRange: { bandedRangeId, rowProperties: banding },
+          fields: [
+            ...(banding.headerColor ? ["rowProperties.headerColor"] : []),
+            "rowProperties.firstBandColor",
+            "rowProperties.secondBandColor",
+          ].join(","),
+        },
+      };
+    } else {
+      bandingRequest = { addBanding: { bandedRange: { range, rowProperties: banding } } };
+    }
+  }
+
+  const bodyFormat = googleSheetFormatCellFields(formatting);
+  if (bodyFormat) {
+    requests.push({
+      repeatCell: {
+        range,
+        cell: { userEnteredFormat: bodyFormat.userEnteredFormat },
+        fields: bodyFormat.fields.join(","),
+      },
+    });
+  }
+
+  if (bandingRequest) requests.push(bandingRequest);
+
+  const headerFormat = googleSheetFormatCellFields(formatting, true);
+  if (headerFormat) {
+    requests.push({
+      repeatCell: {
+        range: {
+          ...range,
+          endRowIndex: range.startRowIndex + 1,
+        },
+        cell: { userEnteredFormat: headerFormat.userEnteredFormat },
+        fields: headerFormat.fields.join(","),
+      },
+    });
+  }
+
+  if (formatting.freezeHeaderRow) {
+    requests.push({
+      updateSheetProperties: {
+        properties: {
+          sheetId: range.sheetId,
+          gridProperties: {
+            frozenRowCount: scope === "range" ? range.startRowIndex + 1 : 1,
+          },
+        },
+        fields: "gridProperties.frozenRowCount",
+      },
+    });
+  }
+
+  if (formatting.autoResizeColumns) {
+    requests.push({
+      autoResizeDimensions: {
+        dimensions: {
+          sheetId: range.sheetId,
+          dimension: "COLUMNS",
+          startIndex: range.startColumnIndex,
+          endIndex: range.endColumnIndex,
+        },
+      },
+    });
+  }
+
+  return requests;
+}
+
+async function generateGoogleSheetFormatting(message, sender) {
+  const snapshot = message.snapshot;
+  const spreadsheetId = verifyGoogleSheetSender(snapshot?.spreadsheetId, sender);
+  const dimensions = parseGoogleSheetRange(snapshot.range);
+  if (
+    !Array.isArray(snapshot.values)
+    || snapshot.values.length !== dimensions.rowCount
+    || snapshot.values.some((row) => !Array.isArray(row) || row.length !== dimensions.columnCount)
+    || snapshot.values.some((row) => row.some((value) => !isGoogleSheetScalar(value)))
+    || typeof message.instruction !== "string"
+    || message.instruction.length > 10000
+    || !message.options
+    || typeof message.options !== "object"
+    || Array.isArray(message.options)
+  ) {
+    throw new Error("Load a valid cell range and formatting options first.");
+  }
+  const options = { ...message.options };
+  const scope = options.scope;
+  delete options.scope;
+  validateGoogleSheetFormatting(options, false);
+  const { sessionToken } = await chrome.storage.local.get(["sessionToken"]);
+  if (!sessionToken) throw new Error("Sign in to Exelidoc from the toolbar popup first.");
+  const accessToken = await getGoogleAccessToken(GOOGLE_DATA_SCOPES, false);
+  const metadata = await getGoogleSheetMetadata(spreadsheetId, accessToken);
+  const sheet = (metadata.sheets || []).find(
+    (candidate) => candidate.properties?.title === snapshot.sheetTitle
+  );
+  if (!Number.isInteger(sheet?.properties?.sheetId)) {
+    throw new Error("The selected sheet tab could not be verified. Search again and retry.");
+  }
+  getGoogleSheetFormatRange(sheet, snapshot, scope);
+
+  let customFormatting = {};
+  let notes = [];
+  const instruction = message.instruction.trim();
+  if (instruction) {
+    const sourceUrl = getGoogleSheetUrl(spreadsheetId);
+    const response = await fetch(`${BACKEND_URL}/api/ai/format-range`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-Token": sessionToken,
+      },
+      body: JSON.stringify({
+        values: snapshot.values,
+        instruction,
+        source_url: sourceUrl,
+        source_urls: [sourceUrl],
+        source_refs: [{ provider: "google", kind: "google_spreadsheet", id: spreadsheetId }],
+        client: "chrome",
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Exelidoc backend returned ${response.status}.`);
+    customFormatting = validateGoogleSheetFormatting(data.formatting);
+    notes = Array.isArray(data.notes) ? data.notes : [];
+  }
+
+  const formatting = validateGoogleSheetFormatting({ ...customFormatting, ...options });
+  const requests = buildGoogleSheetFormattingRequests(sheet, snapshot, scope, formatting);
+  if (requests.some((request) => request.updateBanding)) {
+    notes.push("Existing alternating row colors in this target will be updated.");
+  }
+  return {
+    formatting,
+    scope,
+    requestCount: requests.length,
+    notes,
+  };
+}
+
+async function applyGoogleSheetFormatting(message, sender) {
+  const snapshot = message.snapshot;
+  verifyGoogleSheetSender(snapshot?.spreadsheetId, sender);
+  if (
+    !snapshot
+    || typeof snapshot.spreadsheetId !== "string"
+    || typeof snapshot.sheetTitle !== "string"
+    || typeof snapshot.range !== "string"
+    || !Array.isArray(snapshot.values)
+  ) {
+    throw new Error("The formatting preview is invalid. Load the range again.");
+  }
+  const dimensions = parseGoogleSheetRange(snapshot.range);
+  if (
+    snapshot.values.length !== dimensions.rowCount
+    || snapshot.values.some((row) => !Array.isArray(row) || row.length !== dimensions.columnCount)
+    || snapshot.values.some((row) => row.some((value) => !isGoogleSheetScalar(value)))
+  ) {
+    throw new Error("The formatting preview has invalid cell values.");
+  }
+  const formatting = validateGoogleSheetFormatting(message.formatting);
+  const accessToken = await getGoogleAccessToken([GOOGLE_SHEETS_EDIT_SCOPE], true);
+  const metadata = await getGoogleSheetMetadata(snapshot.spreadsheetId, accessToken);
+  const sheet = (metadata.sheets || []).find(
+    (candidate) => candidate.properties?.title === snapshot.sheetTitle
+  );
+  if (!Number.isInteger(sheet?.properties?.sheetId)) {
+    throw new Error("The selected sheet tab no longer exists. Search again and retry.");
+  }
+  const { url } = getGoogleSheetRangeUrl(
+    snapshot.spreadsheetId,
+    snapshot.sheetTitle,
+    snapshot.range
+  );
+  const currentData = await googleApiRequest(url, accessToken);
+  const currentValues = normalizeGoogleSheetValues(
+    currentData.values || [],
+    dimensions.rowCount,
+    dimensions.columnCount
+  );
+  if (JSON.stringify(currentValues) !== JSON.stringify(snapshot.values)) {
+    throw new Error("The sheet changed after the formatting preview. Reload the range and preview again.");
+  }
+  const requests = buildGoogleSheetFormattingRequests(
+    sheet,
+    snapshot,
+    message.scope,
+    formatting
+  );
+  await readGoogleApiResponse(await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(snapshot.spreadsheetId)}:batchUpdate`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests }),
+    }
+  ));
+  return { ok: true, formattingChanges: requests.length };
 }
 
 async function getGoogleDriveSearchResults(query, accessToken) {
@@ -1671,6 +2135,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "APPLY_GOOGLE_SHEET_EDIT") {
     handleGoogleSheetMessage(message, sender, sendResponse, applyGoogleSheetEdit, "Google Sheets apply");
+    return true;
+  }
+
+  if (message.type === "GENERATE_GOOGLE_SHEET_FORMATTING") {
+    handleGoogleSheetMessage(message, sender, sendResponse, generateGoogleSheetFormatting, "Google Sheets formatting preview");
+    return true;
+  }
+
+  if (message.type === "APPLY_GOOGLE_SHEET_FORMATTING") {
+    handleGoogleSheetMessage(message, sender, sendResponse, applyGoogleSheetFormatting, "Google Sheets formatting apply");
     return true;
   }
 

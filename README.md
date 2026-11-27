@@ -18,9 +18,11 @@ currently provides:
 - **Google Docs:** analyze or preview an edit to the active plain-text document.
   The current edit flow replaces the document text and does not support tables
   or embedded objects. You review the result before applying it.
-- **Google Sheets:** select a cell range, describe the change, review a
-  cell-by-cell preview, and approve it. Formula changes need a separate
-  confirmation. The extension re-reads the range before writing.
+- **Google Sheets:** select a cell range to create or edit cells, or open the
+  separate Formatting tab for quick styles and custom formatting instructions.
+  Preview formatting for the selected range or the entire active sheet before
+  applying it. Cell edits get a cell-by-cell preview, formula changes need a
+  separate confirmation, and the extension re-reads the range before writing.
 - **Google Slides:** ask questions about presentation text. This is read-only.
 - **Google sources in context:** search Gmail, Drive, Docs, Sheets, and Slides
   when requested. Select the sources to include in a request; selected content

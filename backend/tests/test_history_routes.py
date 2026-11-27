@@ -216,3 +216,43 @@ def test_google_sheet_edit_route_returns_preview_and_saves_question():
         "Rename the label",
         None,
     )
+
+
+def test_google_sheet_format_route_returns_plan_and_saves_instruction():
+    app = create_app()
+    values = [["Amount", "Date"], [12, "2026-01-01"]]
+
+    with app.test_client() as client, patch(
+        "utils.auth_decorator.get_user_by_session_token", return_value=USER
+    ), patch("utils.auth_decorator.has_access", return_value=True), patch(
+        "utils.auth_decorator.check_and_consume_quota", return_value=(True, 49)
+    ), patch(
+        "routes.ai.format_spreadsheet_range",
+        return_value={"formatting": {"numberFormat": "CURRENCY"}, "notes": []},
+    ) as format_range, patch("routes.ai.save_conversation") as save_history, patch(
+        "routes.ai.log_ai_usage"
+    ):
+        response = client.post(
+            "/api/ai/format-range",
+            json={
+                "values": values,
+                "instruction": "Format the amount as currency",
+                "source_url": "https://docs.google.com/spreadsheets/d/sheet-1/edit",
+                "source_urls": ["https://docs.google.com/spreadsheets/d/sheet-1/edit"],
+                "client": "chrome",
+            },
+            headers={"X-Session-Token": "session-1"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["formatting"] == {"numberFormat": "CURRENCY"}
+    format_range.assert_called_once_with(values, "Format the amount as currency", context=None)
+    save_history.assert_called_once_with(
+        "user-1",
+        "chrome",
+        "format-range",
+        "https://docs.google.com/spreadsheets/d/sheet-1/edit",
+        ["https://docs.google.com/spreadsheets/d/sheet-1/edit"],
+        "Format the amount as currency",
+        None,
+    )

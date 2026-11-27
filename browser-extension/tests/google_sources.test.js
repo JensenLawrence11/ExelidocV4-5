@@ -129,7 +129,13 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
     if (pathname.endsWith("/spreadsheets/sheet-1")) {
       return jsonResponse({
         properties: { title: "Forecast" },
-        sheets: [{ properties: { title: "Plan", sheetId: 123 } }],
+        sheets: [{
+          properties: {
+            title: "Plan",
+            sheetId: 123,
+            gridProperties: { rowCount: 1000, columnCount: 26 },
+          },
+        }],
       });
     }
     if (pathname.endsWith("/spreadsheets/sheet-1/values/'Plan'!A1:Z100")) {
@@ -149,6 +155,12 @@ function createHarness({ currentSheetValues = [["Quarter", "Forecast"], ["Q1", 1
     }
     if (url.endsWith("/api/ai/edit-range")) {
       return jsonResponse({ correctedValues: [["Name", "New"]], notes: [] });
+    }
+    if (url.endsWith("/api/ai/format-range")) {
+      return jsonResponse({
+        formatting: { headerStyle: true, headerBackgroundColor: "#1A237E" },
+        notes: ["Use a dark blue header."],
+      });
     }
     throw new Error(`Unexpected request: ${url}`);
   };
@@ -420,6 +432,102 @@ test("Google Sheets edits recheck source values and formulas need separate confi
   assert.ok(updates.some((request) => (
     request.rows[0].values[0].userEnteredValue.formulaValue === "=SUM(B1:B3)"
   )));
+});
+
+test("Google Sheets formatting previews and applies only reviewed format operations", async () => {
+  const harness = createHarness();
+  const sender = { url: "https://docs.google.com/spreadsheets/d/sheet-1/edit" };
+  const loaded = await harness.send({
+    type: "READ_GOOGLE_SHEET_EDIT_RANGE",
+    spreadsheetId: "sheet-1",
+    sheetTitle: "Plan",
+    range: "A1:B2",
+  }, sender);
+  assert.equal(loaded.ok, true, loaded.error);
+
+  const preview = await harness.send({
+    type: "GENERATE_GOOGLE_SHEET_FORMATTING",
+    snapshot: loaded.snapshot,
+    instruction: "",
+    options: {
+      scope: "sheet",
+      headerStyle: true,
+      alternatingRows: true,
+      freezeHeaderRow: true,
+      autoResizeColumns: true,
+      numberFormat: "CURRENCY",
+      borders: true,
+    },
+  }, sender);
+  assert.equal(preview.ok, true, preview.error);
+  assert.equal(preview.scope, "sheet");
+  assert.equal(preview.requestCount, 5);
+  assert.equal(
+    harness.requests.some(({ url }) => url.includes(":batchUpdate")),
+    false
+  );
+
+  const applied = await harness.send({
+    type: "APPLY_GOOGLE_SHEET_FORMATTING",
+    snapshot: loaded.snapshot,
+    formatting: preview.formatting,
+    scope: preview.scope,
+  }, sender);
+  assert.equal(applied.ok, true, applied.error);
+  assert.equal(applied.formattingChanges, 5);
+  const write = harness.requests.find(({ url }) => url.includes(":batchUpdate"));
+  const requests = JSON.parse(write.options.body).requests;
+  assert.ok(requests.some((item) => item.addBanding?.bandedRange.range.sheetId === 123));
+  assert.ok(requests.some((item) => (
+    item.updateSheetProperties?.properties.gridProperties.frozenRowCount === 1
+  )));
+  assert.ok(requests.some((item) => (
+    item.autoResizeDimensions?.dimensions.endIndex === 26
+  )));
+  assert.ok(requests.every((item) => !item.updateCells));
+  const header = requests.find((item) => item.repeatCell?.range.endRowIndex === 1);
+  assert.equal(header.repeatCell.range.endRowIndex, 1);
+});
+
+test("Google Sheets custom formatting requests use the authenticated backend preview", async () => {
+  const harness = createHarness();
+  const sender = { url: "https://docs.google.com/spreadsheets/d/sheet-1/edit" };
+  const snapshot = {
+    spreadsheetId: "sheet-1",
+    sheetTitle: "Plan",
+    range: "A1:B2",
+    values: [["Quarter", "Forecast"], ["Q1", 120]],
+  };
+  const response = await harness.send({
+    type: "GENERATE_GOOGLE_SHEET_FORMATTING",
+    snapshot,
+    instruction: "Use a blue header",
+    options: { scope: "range" },
+  }, sender);
+  assert.equal(response.ok, true, response.error);
+  assert.equal(response.formatting.headerStyle, true);
+  const request = harness.requests.find(({ url }) => url.endsWith("/api/ai/format-range"));
+  const body = JSON.parse(request.options.body);
+  assert.deepEqual(body.values, [["Quarter", "Forecast"], ["Q1", 120]]);
+  assert.equal(body.instruction, "Use a blue header");
+  const applied = await harness.send({
+    type: "APPLY_GOOGLE_SHEET_FORMATTING",
+    snapshot,
+    formatting: response.formatting,
+    scope: response.scope,
+  }, sender);
+  assert.equal(applied.ok, true, applied.error);
+  const write = harness.requests.find(({ url }) => url.includes(":batchUpdate"));
+  const header = JSON.parse(write.options.body).requests.find(
+    (item) => item.repeatCell?.range.endRowIndex === 1
+  );
+  assert.deepEqual(header.repeatCell.range, {
+    sheetId: 123,
+    startRowIndex: 0,
+    endRowIndex: 1,
+    startColumnIndex: 0,
+    endColumnIndex: 2,
+  });
 });
 
 test("Google Sheets apply stops when the range changed after preview", async () => {
