@@ -12,6 +12,7 @@ from services.stripe_service import (
     create_customer_portal_session,
     handle_webhook_event,
 )
+from services.monitoring_service import capture_exception
 from services.user_service import (
     get_user_by_email,
     create_user,
@@ -38,11 +39,11 @@ def customer_portal_route():
         session = create_customer_portal_session(customer_id)
     except stripe.error.StripeError as error:
         current_app.logger.error(
-            "Stripe customer portal failed: type=%s request_id=%s message=%s",
+            "stripe_customer_portal_failed type=%s request_id=%s",
             type(error).__name__,
             getattr(error, "request_id", None),
-            str(error),
         )
+        capture_exception(error)
         return jsonify(
             error="Could not open billing management. Try again shortly or contact Exelidoc support.",
         ), 503
@@ -78,12 +79,12 @@ def create_checkout_session_route():
         )
     except stripe.error.InvalidRequestError as error:
         current_app.logger.warning(
-            "Stripe checkout invalid request: code=%s param=%s request_id=%s message=%s",
+            "stripe_checkout_invalid_request code=%s param=%s request_id=%s",
             getattr(error, "code", None),
             getattr(error, "param", None),
             getattr(error, "request_id", None),
-            str(error),
         )
+        capture_exception(error)
         return jsonify(
             error=(
                 "Stripe could not find the configured price. Check that "
@@ -96,10 +97,10 @@ def create_checkout_session_route():
         ), 503
     except stripe.error.AuthenticationError as error:
         current_app.logger.error(
-            "Stripe checkout authentication failed: request_id=%s message=%s",
+            "stripe_checkout_authentication_failed request_id=%s",
             getattr(error, "request_id", None),
-            str(error),
         )
+        capture_exception(error)
         return jsonify(
             error=(
                 "Stripe authentication failed. Set a valid "
@@ -108,12 +109,12 @@ def create_checkout_session_route():
         ), 503
     except stripe.error.StripeError as error:
         current_app.logger.error(
-            "Stripe checkout failed: type=%s code=%s request_id=%s message=%s",
+            "stripe_checkout_failed type=%s code=%s request_id=%s",
             type(error).__name__,
             getattr(error, "code", None),
             getattr(error, "request_id", None),
-            str(error),
         )
+        capture_exception(error)
         return jsonify(
             error="Stripe could not create checkout. Check the secret key, recurring Price IDs, and Stripe account permissions."
         ), 503
@@ -141,42 +142,62 @@ def webhook_route():
             payload, sig_header, webhook_secret
         )
     except ValueError:
+        current_app.logger.warning("stripe_webhook_invalid_payload")
         return jsonify(error="Invalid payload"), 400
     except Exception:
+        current_app.logger.warning("stripe_webhook_signature_rejected")
         return jsonify(error="Invalid signature"), 400
 
-    event_type = event["type"]
-    obj = event["data"]["object"]
+    if not isinstance(event, dict):
+        current_app.logger.warning("stripe_webhook_invalid_event")
+        return jsonify(error="Invalid payload"), 400
 
-    if event_type == "checkout.session.completed":
-        email = obj.get("customer_email") or obj.get("customer_details", {}).get("email")
-        customer_id = obj.get("customer")
-        tier = (obj.get("metadata") or {}).get("tier", "pro")
-        user = get_user_by_stripe_customer(customer_id) if customer_id else None
-        email = email or (user or {}).get("email")
-        if email and customer_id:
-            user = user or get_user_by_email(email)
-            if not user:
-                create_user(email, tier="free")
-            link_stripe_customer(email, customer_id)
-            set_subscription_status(customer_id, "active", obj.get("subscription"))
-            set_user_tier(customer_id, tier)
+    event_id = event.get("id", "unknown")
+    event_type = event.get("type", "unknown")
+    try:
+        obj = event["data"]["object"]
 
-    elif event_type == "customer.subscription.updated":
-        customer_id = obj.get("customer")
-        status = obj.get("status")  # active, trialing, past_due, canceled, etc.
-        tier = (obj.get("metadata") or {}).get("tier")
-        if customer_id and status:
-            set_subscription_status(customer_id, status, obj.get("id"))
-            # Only overrides tier if metadata carried one (e.g. user changed
-            # plans) -- set_subscription_status already handles the
-            # canceled/past_due -> free downgrade on its own.
-            if tier and status in ("active", "trialing"):
+        if event_type == "checkout.session.completed":
+            customer_details = obj.get("customer_details") or {}
+            email = obj.get("customer_email") or customer_details.get("email")
+            customer_id = obj.get("customer")
+            tier = (obj.get("metadata") or {}).get("tier", "pro")
+            user = get_user_by_stripe_customer(customer_id) if customer_id else None
+            email = email or (user or {}).get("email")
+            if email and customer_id:
+                user = user or get_user_by_email(email)
+                if not user:
+                    create_user(email, tier="free")
+                link_stripe_customer(email, customer_id)
+                set_subscription_status(customer_id, "active", obj.get("subscription"))
                 set_user_tier(customer_id, tier)
 
-    elif event_type == "customer.subscription.deleted":
-        customer_id = obj.get("customer")
-        if customer_id:
-            set_subscription_status(customer_id, "canceled")
+        elif event_type == "customer.subscription.updated":
+            customer_id = obj.get("customer")
+            status = obj.get("status")
+            tier = (obj.get("metadata") or {}).get("tier")
+            if customer_id and status:
+                set_subscription_status(customer_id, status, obj.get("id"))
+                if tier and status in ("active", "trialing"):
+                    set_user_tier(customer_id, tier)
 
+        elif event_type == "customer.subscription.deleted":
+            customer_id = obj.get("customer")
+            if customer_id:
+                set_subscription_status(customer_id, "canceled")
+    except Exception as error:
+        current_app.logger.error(
+            "stripe_webhook_processing_failed event_id=%s event_type=%s exception_type=%s",
+            event_id,
+            event_type,
+            type(error).__name__,
+        )
+        capture_exception(error)
+        return jsonify(error="Webhook processing failed. Stripe may retry this event."), 500
+
+    current_app.logger.info(
+        "stripe_webhook_processed event_id=%s event_type=%s",
+        event_id,
+        event_type,
+    )
     return jsonify(received=True, type=event_type)

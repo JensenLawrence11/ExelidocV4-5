@@ -13,7 +13,7 @@ RESEND_API_URL = "https://api.resend.com/emails"
 
 def _auth_action_url(path: str, token: str) -> str:
     return (
-        f"{Config.API_PUBLIC_URL.rstrip('/')}/api/auth/{path}?"
+        f"{Config.API_PUBLIC_URL.rstrip('/')}/api/auth/{path}#"
         f"{urlencode({'token': token})}"
     )
 

@@ -20,6 +20,8 @@ PRODUCTION_SETTINGS = {
     "STRIPE_PRICE_ID_PRO": "price_pro",
     "STRIPE_PRICE_ID_ENTERPRISE": "price_enterprise",
     "BILLING_RETURN_URL": "https://example.com/index.html#plans",
+    "SENTRY_DSN": "https://public@example.ingest.sentry.io/123",
+    "TRUSTED_PROXY_HOPS": 1,
     "API_PUBLIC_URL": "https://api.example.com",
     "SECRET_KEY": "random-production-secret",
     "FRONTEND_ORIGINS": [
@@ -82,6 +84,9 @@ def test_production_configuration_requires_gemini_api_key():
         ("APP_PUBLIC_URL", "http://example.com", "APP_PUBLIC_URL"),
         ("API_PUBLIC_URL", "https://api.example.com/api", "API_PUBLIC_URL"),
         ("BILLING_RETURN_URL", "https://", "BILLING_RETURN_URL"),
+        ("SENTRY_DSN", None, "SENTRY_DSN"),
+        ("SENTRY_DSN", "not-a-dsn", "SENTRY_DSN"),
+        ("TRUSTED_PROXY_HOPS", 0, "TRUSTED_PROXY_HOPS"),
     ],
 )
 def test_insecure_or_incomplete_production_settings_are_rejected(name, value, expected_error):

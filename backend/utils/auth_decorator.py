@@ -1,4 +1,5 @@
 """Decorator for routes that require an account with quota remaining."""
+import logging
 from functools import wraps
 from flask import request, jsonify, g
 
@@ -8,6 +9,7 @@ from services.user_service import (
     has_access,
     check_and_consume_quota,
 )
+from services.monitoring_service import capture_exception
 
 
 def _extract_session_token():
@@ -35,8 +37,9 @@ def require_session(fn):
 
         try:
             user = get_user_by_session_token(token) or get_user_by_api_key(token)
-        except Exception as e:
-            print(f"require_session: Supabase lookup failed -- {e}")
+        except Exception as error:
+            logging.error("session_lookup_failed exception_type=%s", type(error).__name__)
+            capture_exception(error)
             return jsonify(error="Backend service unavailable, try again shortly"), 503
 
         if not user:
@@ -57,8 +60,9 @@ def require_subscription(fn):
 
         try:
             user = get_user_by_session_token(token) or get_user_by_api_key(token)
-        except Exception as e:
-            print(f"require_subscription: Supabase lookup failed -- {e}")
+        except Exception as error:
+            logging.error("subscription_lookup_failed exception_type=%s", type(error).__name__)
+            capture_exception(error)
             return jsonify(error="Backend service unavailable, try again shortly"), 503
 
         if not user:
@@ -69,8 +73,9 @@ def require_subscription(fn):
 
         try:
             allowed, remaining = check_and_consume_quota(user)
-        except Exception as e:
-            print(f"require_subscription: quota check failed -- {e}")
+        except Exception as error:
+            logging.error("quota_check_failed exception_type=%s", type(error).__name__)
+            capture_exception(error)
             return jsonify(error="Backend service unavailable, try again shortly"), 503
 
         if not allowed:

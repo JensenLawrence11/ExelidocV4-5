@@ -24,6 +24,7 @@ def _stripe_setting(name: str) -> str | None:
 class Config:
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev-only-insecure-key")
     ENV = os.environ.get("FLASK_ENV", "development").strip().lower()
+    TRUSTED_PROXY_HOPS = int(os.environ.get("TRUSTED_PROXY_HOPS", "0"))
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", 1_000_000))
     AI_MAX_TEXT_CHARS = int(os.environ.get("AI_MAX_TEXT_CHARS", 100_000))
     AI_MAX_RANGE_CELLS = int(os.environ.get("AI_MAX_RANGE_CELLS", 5_000))
@@ -69,6 +70,7 @@ class Config:
 
     SUPABASE_URL = os.environ.get("SUPABASE_URL")
     SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+    SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip() or None
 
     @classmethod
     def validate_for_production(cls) -> None:
@@ -84,6 +86,7 @@ class Config:
             cls.stripe_env_name("PRICE_ID_PRO"): cls.STRIPE_PRICE_ID_PRO,
             cls.stripe_env_name("PRICE_ID_ENTERPRISE"): cls.STRIPE_PRICE_ID_ENTERPRISE,
             "BILLING_RETURN_URL": cls.BILLING_RETURN_URL,
+            "SENTRY_DSN": cls.SENTRY_DSN,
         }
         missing = [
             name for name, value in required_settings.items()
@@ -99,6 +102,18 @@ class Config:
             and not cls.STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_"))
         ):
             missing.append("STRIPE_SECRET_KEY (live-mode key required in production)")
+
+        if cls.TRUSTED_PROXY_HOPS < 1:
+            missing.append("TRUSTED_PROXY_HOPS (set to the number of trusted reverse proxies)")
+
+        sentry_dsn = urlparse(cls.SENTRY_DSN or "")
+        if (
+            sentry_dsn.scheme != "https"
+            or not sentry_dsn.netloc
+            or not sentry_dsn.username
+            or not sentry_dsn.path.strip("/")
+        ):
+            missing.append("SENTRY_DSN (valid HTTPS project DSN required)")
 
         has_resend_key = (
             isinstance(cls.RESEND_API_KEY, str) and bool(cls.RESEND_API_KEY.strip())

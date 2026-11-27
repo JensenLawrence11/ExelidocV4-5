@@ -7,8 +7,10 @@ from services.ai_service import (
     AIMonthlyBudgetExceeded,
     AIServiceError,
     _call_gemini,
+    _emit_budget_alert,
     analyze_text,
 )
+from services.monitoring_service import AI_BUDGET_WARNING
 
 
 USER = {"id": "user-1", "email": "user@example.com", "tier": "free"}
@@ -52,6 +54,18 @@ def test_monthly_budget_exhaustion_stops_before_generation():
             analyze_text("Original text", "Rewrite this")
 
     post.assert_not_called()
+
+
+def test_monthly_budget_warning_is_reported_once_after_shared_claim():
+    month_start = date(2026, 11, 1)
+
+    with patch("services.ai_service.Config.SENTRY_DSN", "https://sentry.example/123"), patch(
+        "services.ai_service.claim_monthly_ai_budget_alert", return_value=True
+    ) as claim, patch("services.ai_service.capture_message") as capture:
+        _emit_budget_alert(month_start, "warning_80_percent")
+
+    claim.assert_called_once_with(month_start, "warning_80_percent")
+    capture.assert_called_once_with(AI_BUDGET_WARNING)
 
 
 def test_missing_provider_configuration_raises_instead_of_returning_original_text():

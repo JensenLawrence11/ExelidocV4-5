@@ -82,6 +82,21 @@ def test_password_reset_get_does_not_consume_token():
     lookup.assert_not_called()
     assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
+def test_password_reset_link_token_is_read_from_fragment_without_server_query():
+    app = create_app()
+
+    with app.test_client() as client:
+        response = client.get("/api/auth/reset-password")
+
+    assert response.status_code == 200
+    assert b"location.hash.slice(1)" in response.data
+    assert b"history.replaceState" in response.data
+    assert b"form.hidden = false" in response.data
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
 
 
 def test_password_reset_uses_single_use_hashed_token_and_revokes_sessions():

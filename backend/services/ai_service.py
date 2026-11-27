@@ -10,9 +10,16 @@ import re
 import requests
 from config import Config
 from services.ai_budget_service import (
+    claim_monthly_ai_budget_alert,
     release_monthly_ai_budget,
     reserve_monthly_ai_budget,
     settle_monthly_ai_budget,
+)
+from services.monitoring_service import (
+    AI_BUDGET_LIMIT,
+    AI_BUDGET_WARNING,
+    capture_exception,
+    capture_message,
 )
 
 GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -42,6 +49,15 @@ class AIMonthlyBudgetExceeded(AIServiceError):
         )
 
 
+def _log_invalid_ai_response(kind: str, error: Exception) -> None:
+    logging.error(
+        "ai_response_invalid kind=%s exception_type=%s",
+        kind,
+        type(error).__name__,
+    )
+    capture_exception(error)
+
+
 def _estimate_max_request_cost(system_prompt: str, user_content: str) -> int:
     rates = GEMINI_MODEL_NANODOLLARS_PER_TOKEN.get(Config.GEMINI_MODEL)
     if not rates:
@@ -66,19 +82,48 @@ def _estimate_max_request_cost(system_prompt: str, user_content: str) -> int:
 def _record_budget_settlement(month_start, reservation: int, actual: int) -> None:
     try:
         settle_monthly_ai_budget(month_start, reservation, actual)
+        _emit_budget_alert(month_start, "warning_80_percent")
     except Exception as error:
-        logging.exception("Could not settle Gemini monthly budget reservation")
+        logging.error(
+            "ai_budget_settlement_failed exception_type=%s",
+            type(error).__name__,
+        )
+        capture_exception(error)
         raise AIServiceError(
             "AI usage could not be recorded. Try again later.",
             status_code=503,
         ) from error
 
 
+def _emit_budget_alert(month_start, alert_code: str) -> None:
+    if not Config.SENTRY_DSN:
+        return
+    try:
+        claimed = claim_monthly_ai_budget_alert(month_start, alert_code)
+    except Exception as error:
+        logging.error(
+            "ai_budget_alert_claim_failed alert_code=%s exception_type=%s",
+            alert_code,
+            type(error).__name__,
+        )
+        capture_exception(error)
+        return
+
+    if claimed:
+        message = AI_BUDGET_WARNING if alert_code == "warning_80_percent" else AI_BUDGET_LIMIT
+        logging.warning(message)
+        capture_message(message)
+
+
 def _release_budget_reservation(month_start, reservation: int) -> None:
     try:
         release_monthly_ai_budget(month_start, reservation)
     except Exception as error:
-        logging.exception("Could not release Gemini monthly budget reservation")
+        logging.error(
+            "ai_budget_reservation_release_failed exception_type=%s",
+            type(error).__name__,
+        )
+        capture_exception(error)
         raise AIServiceError(
             "AI budget tracking is unavailable. Try again later.",
             status_code=503,
@@ -115,13 +160,20 @@ def _call_gemini(system_prompt: str, user_content: str) -> str:
     try:
         month_start = reserve_monthly_ai_budget(reservation)
     except Exception as error:
-        logging.exception("Could not reserve Gemini monthly budget")
+        logging.error(
+            "ai_budget_reservation_failed exception_type=%s",
+            type(error).__name__,
+        )
+        capture_exception(error)
         raise AIServiceError(
             "AI budget tracking is unavailable. Try again later.",
             status_code=503,
         ) from error
     if month_start is None:
+        _emit_budget_alert(None, "cap_blocked")
         raise AIMonthlyBudgetExceeded()
+
+    _emit_budget_alert(month_start, "warning_80_percent")
 
     try:
         response = requests.post(
@@ -149,11 +201,20 @@ def _call_gemini(system_prompt: str, user_content: str) -> str:
             _release_budget_reservation(month_start, reservation)
         else:
             _record_budget_settlement(month_start, reservation, reservation)
-        logging.exception("Gemini API request failed with HTTP %s", status_code)
+        logging.error(
+            "gemini_api_http_error status_code=%s exception_type=%s",
+            status_code,
+            type(error).__name__,
+        )
+        capture_exception(error)
         raise AIServiceError("Gemini could not complete this request. Try again later.") from error
     except requests.RequestException as error:
         _record_budget_settlement(month_start, reservation, reservation)
-        logging.exception("Gemini API request failed")
+        logging.error(
+            "gemini_api_request_failed exception_type=%s",
+            type(error).__name__,
+        )
+        capture_exception(error)
         raise AIServiceError("Gemini could not complete this request. Try again later.") from error
 
     try:
@@ -170,7 +231,11 @@ def _call_gemini(system_prompt: str, user_content: str) -> str:
             raise ValueError("Gemini returned an empty response")
     except (ValueError, KeyError, IndexError, TypeError) as error:
         _record_budget_settlement(month_start, reservation, reservation)
-        logging.exception("Gemini returned an invalid response")
+        logging.error(
+            "gemini_response_invalid exception_type=%s",
+            type(error).__name__,
+        )
+        capture_exception(error)
         raise AIServiceError("Gemini returned an invalid response. Try again later.") from error
 
     actual_cost = _reported_request_cost(data)
@@ -246,7 +311,7 @@ def analyze_text(text: str, instruction: str | None = None, context: str | None 
         if not isinstance(corrected, str) or not isinstance(suggestions, list):
             raise ValueError("AI provider returned an invalid analysis response")
     except (ValueError, AttributeError) as error:
-        logging.exception("AI provider returned an invalid analysis response")
+        _log_invalid_ai_response("analysis", error)
         raise AIServiceError("The AI provider returned an invalid response. Try again later.") from error
     return {"corrected": corrected, "suggestions": suggestions}
 
@@ -282,7 +347,7 @@ def generate_text(prompt: str, context: str | None = None) -> dict:
         if not isinstance(generated, str):
             raise ValueError("AI provider returned an invalid generation response")
     except (ValueError, AttributeError) as error:
-        logging.exception("AI provider returned an invalid generation response")
+        _log_invalid_ai_response("generation", error)
         raise AIServiceError("The AI provider returned an invalid response. Try again later.") from error
     return {"generated": generated}
 
@@ -348,7 +413,7 @@ def analyze_spreadsheet_range(values: list, context: str | None = None) -> dict:
         ):
             raise ValueError("AI provider returned an invalid range response")
     except (ValueError, AttributeError) as error:
-        logging.exception("AI provider returned an invalid range response")
+        _log_invalid_ai_response("range", error)
         raise AIServiceError("The AI provider returned an invalid response. Try again later.") from error
 
     result = [row[:] for row in values]
@@ -446,7 +511,7 @@ def edit_spreadsheet_range(
         ):
             raise ValueError("AI provider returned an invalid spreadsheet edit")
     except (ValueError, AttributeError) as error:
-        logging.exception("AI provider returned an invalid spreadsheet edit")
+        _log_invalid_ai_response("spreadsheet_edit", error)
         raise AIServiceError("The AI provider returned an invalid response. Try again later.") from error
 
     return {"correctedValues": corrected, "notes": notes}

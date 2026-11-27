@@ -9,12 +9,14 @@ from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import Config
 from routes.ai import ai_bp
 from routes.stripe_routes import stripe_bp
 from routes.auth import auth_bp
 from routes.history import history_bp
+from services.monitoring_service import initialize_monitoring
 
 
 def _configured_frontend_origins() -> list[str]:
@@ -50,6 +52,9 @@ def create_app():
 
     app = Flask(__name__)
     app.config.from_object(Config)
+    if Config.TRUSTED_PROXY_HOPS:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=Config.TRUSTED_PROXY_HOPS)
+    initialize_monitoring()
 
     project_root = Path(__file__).resolve().parent.parent
     office_addin_root = project_root / "office-addin"

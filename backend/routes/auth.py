@@ -10,6 +10,7 @@ from flask import Blueprint, request, jsonify, g
 
 from config import Config
 from services.email_service import send_password_reset_email, send_verification_email, send_welcome_email
+from services.monitoring_service import capture_exception
 from services.stripe_service import get_checkout_session
 from services.user_service import (
     get_user_by_email,
@@ -28,6 +29,7 @@ from services.user_service import (
     delete_user,
 )
 from utils.auth_decorator import require_session
+from utils.rate_limit import RateLimit, rate_limited
 
 auth_bp = Blueprint("auth", __name__)
 EMAIL_PATTERN = re.compile(
@@ -48,49 +50,84 @@ def _can_delete_account(user: dict) -> bool:
 
 
 def _verification_page(message: str, status: int = 200, token: str | None = None):
-    action = ""
-    if token:
-        action = (
-            '<form method="post"><input type="hidden" name="token" '
-            f'value="{escape(token, quote=True)}"><button type="submit">Confirm email</button></form>'
-        )
+    hidden = " hidden" if not token else ""
+    action = (
+        f'<form method="post"{hidden}><input type="hidden" name="token" '
+        f'value="{escape(token or "", quote=True)}"><button type="submit">Confirm email</button></form>'
+    )
+    token_script = (
+        "<script>"
+        "const token = new URLSearchParams(location.hash.slice(1)).get('token');"
+        "const form = document.querySelector('form');"
+        "if (token) { form.elements.token.value = token; form.hidden = false; }"
+        "history.replaceState(null, '', location.pathname);"
+        "</script>"
+    )
     return (
         "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
         "<title>Exelidoc email verification</title>"
         "<body style=\"font:16px system-ui;max-width:36rem;margin:12vh auto;padding:0 1rem\">"
-        f"<h1>Exelidoc</h1><p>{escape(message)}</p>{action}</body></html>",
-        status,
-        {"Content-Type": "text/html; charset=utf-8"},
-    )
-
-
-def _password_reset_page(message: str, status: int = 200, token: str | None = None):
-    form = ""
-    if token:
-        form = (
-            '<form method="post">'
-            f'<input type="hidden" name="token" value="{escape(token, quote=True)}">'
-            '<label for="password">New password</label>'
-            '<input id="password" name="password" type="password" minlength="8" maxlength="128" required>'
-            '<button type="submit">Reset password</button></form>'
-        )
-    return (
-        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        "<title>Reset Exelidoc password</title>"
-        "<body style=\"font:16px system-ui;max-width:36rem;margin:12vh auto;padding:0 1rem\">"
-        f"<h1>Exelidoc</h1><p>{escape(message)}</p>{form}</body></html>",
+        f"<h1>Exelidoc</h1><p>{escape(message)}</p>{action}{token_script}</body></html>",
         status,
         {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-store",
             "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": (
+                "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+            ),
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+        },
+    )
+
+
+def _password_reset_page(message: str, status: int = 200, token: str | None = None):
+    hidden = " hidden" if not token else ""
+    form = (
+        f'<form method="post"{hidden}>'
+        f'<input type="hidden" name="token" value="{escape(token or "", quote=True)}">'
+        '<label for="password">New password</label>'
+        '<input id="password" name="password" type="password" minlength="8" maxlength="128" required>'
+        '<button type="submit">Reset password</button></form>'
+    )
+    token_script = (
+        "<script>"
+        "const token = new URLSearchParams(location.hash.slice(1)).get('token');"
+        "const form = document.querySelector('form');"
+        "if (token) { form.elements.token.value = token; form.hidden = false; }"
+        "history.replaceState(null, '', location.pathname);"
+        "</script>"
+    )
+    return (
+        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<title>Reset Exelidoc password</title>"
+        "<body style=\"font:16px system-ui;max-width:36rem;margin:12vh auto;padding:0 1rem\">"
+        f"<h1>Exelidoc</h1><p>{escape(message)}</p>{form}{token_script}</body></html>",
+        status,
+        {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": (
+                "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+            ),
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
         },
     )
 
 
 @auth_bp.post("/signup-free")
+@rate_limited(
+    "signup",
+    RateLimit("ip", 10, 3600),
+    RateLimit("email", 3, 3600),
+)
 def signup_free():
     """
     Starts a free account signup and sends a one-time email verification link.
@@ -115,8 +152,12 @@ def signup_free():
     create_pending_signup(email, hash_password(password), token_hash, expires_at)
     try:
         send_verification_email(email, token)
-    except Exception:
-        logging.exception("Could not send Exelidoc verification email")
+    except Exception as error:
+        logging.error(
+            "verification_email_delivery_failed exception_type=%s",
+            type(error).__name__,
+        )
+        capture_exception(error)
         delete_pending_signup(email)
         return jsonify(error="Could not send a verification email. Try again later."), 503
 
@@ -127,12 +168,20 @@ def signup_free():
 
 
 @auth_bp.route("/verify-email", methods=["GET", "POST"])
+@rate_limited(
+    "verify_email",
+    RateLimit("ip", 20, 3600),
+    RateLimit("token", 5, 3600),
+)
 def verify_email():
     if request.method == "GET":
         token = request.args.get("token", "")
-        if not token or len(token) > 128:
+        if token and len(token) > 128:
             return _verification_page("This verification link is invalid.", 400)
-        return _verification_page("Confirm your email address to finish creating your account.", token=token)
+        return _verification_page(
+            "Confirm your email address to finish creating your account.",
+            token=token or None,
+        )
 
     token = request.form.get("token", "")
     if not token or len(token) > 128:
@@ -156,12 +205,21 @@ def verify_email():
     delete_pending_signup(email)
     try:
         send_welcome_email(email)
-    except Exception:
-        logging.exception("Could not send Exelidoc welcome email")
+    except Exception as error:
+        logging.error(
+            "welcome_email_delivery_failed exception_type=%s",
+            type(error).__name__,
+        )
+        capture_exception(error)
     return _verification_page("Your email is verified and your Exelidoc account is ready. You can now sign in.")
 
 
 @auth_bp.post("/login")
+@rate_limited(
+    "login",
+    RateLimit("ip", 30, 900),
+    RateLimit("email", 10, 900),
+)
 def login():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
@@ -190,6 +248,11 @@ def set_password():
 
 
 @auth_bp.post("/request-password-reset")
+@rate_limited(
+    "password_reset_request",
+    RateLimit("ip", 10, 3600),
+    RateLimit("email", 3, 3600),
+)
 def request_password_reset():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
@@ -204,8 +267,12 @@ def request_password_reset():
         if issue_password_reset(user["id"], token_hash, expires_at):
             try:
                 send_password_reset_email(user["email"], token)
-            except Exception:
-                logging.exception("Could not send Exelidoc password reset email")
+            except Exception as error:
+                logging.error(
+                    "password_reset_email_delivery_failed exception_type=%s",
+                    type(error).__name__,
+                )
+                capture_exception(error)
 
     return jsonify(
         message="If an account exists for that email, a password reset link will be sent. If you requested one recently, wait a minute before trying again."
@@ -213,12 +280,20 @@ def request_password_reset():
 
 
 @auth_bp.route("/reset-password", methods=["GET", "POST"])
+@rate_limited(
+    "password_reset_complete",
+    RateLimit("ip", 10, 3600),
+    RateLimit("token", 5, 3600),
+)
 def reset_password():
     if request.method == "GET":
         token = request.args.get("token", "")
-        if not token or len(token) > 128:
+        if token and len(token) > 128:
             return _password_reset_page("This password reset link is invalid or has expired.", 400)
-        return _password_reset_page("Choose a new password. Reset links expire after 30 minutes.", token=token)
+        return _password_reset_page(
+            "Choose a new password. Reset links expire after 30 minutes.",
+            token=token or None,
+        )
 
     token = request.form.get("token", "")
     password = request.form.get("password", "")

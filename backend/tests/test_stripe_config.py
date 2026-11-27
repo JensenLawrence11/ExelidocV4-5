@@ -361,3 +361,29 @@ def test_monthly_checkout_webhook_assigns_monthly_tier():
     assert response.status_code == 200
     assert response.get_json() == {"received": True, "type": "checkout.session.completed"}
     set_user_tier.assert_called_once_with("cus-monthly", "monthly")
+
+
+def test_webhook_processing_failure_is_reported_and_returns_retryable_status():
+    app = create_app()
+    app.config["STRIPE_WEBHOOK_SECRET"] = "whsec_test"
+    event = {
+        "id": "evt_test",
+        "type": "customer.subscription.deleted",
+        "data": {"object": {"customer": "cus-test"}},
+    }
+
+    with app.test_client() as client, patch(
+        "routes.stripe_routes.handle_webhook_event", return_value=event
+    ), patch(
+        "routes.stripe_routes.set_subscription_status",
+        side_effect=RuntimeError("database unavailable"),
+    ), patch("routes.stripe_routes.capture_exception") as capture:
+        response = client.post(
+            "/api/stripe/webhook",
+            data=b"{}",
+            headers={"Stripe-Signature": "test-signature"},
+        )
+
+    assert response.status_code == 500
+    assert "Stripe may retry" in response.get_json()["error"]
+    capture.assert_called_once()

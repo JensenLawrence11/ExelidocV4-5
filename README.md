@@ -1,259 +1,305 @@
 # Exelidoc
 
+Exelidoc is an AI assistant for Google Workspace, with an experimental Microsoft
+Office add-in. The Chrome extension connects to a shared Flask API for accounts,
+AI requests, history, quotas, Stripe subscriptions, and abuse controls.
 
-AI writing/data assistant across Google Docs, Gmail, Word, Excel, PowerPoint, and Outlook —
-like Grammarly/Honey, but powered by your own AI backend.
+## What works today
 
+### Chrome extension
 
-## Structure
+Install the unpacked extension from `browser-extension/` in Chrome or Edge. It
+currently provides:
 
+- **Gmail:** search messages and find/open matching messages. After the one-time
+  Google connection, the extension indexes Inbox messages locally every five
+  minutes while the browser is running. It stores at most 20,000 body characters
+  per message. The index is not uploaded automatically.
+- **Google Docs:** analyze or preview an edit to the active plain-text document.
+  The current edit flow replaces the document text and does not support tables
+  or embedded objects. You review the result before applying it.
+- **Google Sheets:** select a cell range, describe the change, review a
+  cell-by-cell preview, and approve it. Formula changes need a separate
+  confirmation. The extension re-reads the range before writing.
+- **Google Slides:** ask questions about presentation text. This is read-only.
+- **Google sources in context:** search Gmail, Drive, Docs, Sheets, and Slides
+  when requested. Select the sources to include in a request; selected content
+  is sent to the backend and Gemini only when you submit that request.
+- **Gmail drafts:** use selected email content as context and apply a reviewed
+  draft to the open message. Exelidoc does not send the email.
+- **Accounts and history:** email-verified signup, password login/reset,
+  subscription management, account deletion, and shared question history.
+  History shows the user's question and safe source references, not source text
+  or AI responses.
 
-```
-Exelidoc/
-├── backend/            Flask API — the shared brain. Calls the AI, handles
-│                        Stripe subscriptions, auth. Both frontends below
-│                        talk to this over HTTPS. Nothing else calls the AI
-│                        API directly — keys never leave the server.
-├── office-addin/       Task pane add-in for Word/Excel/PowerPoint/Outlook.
-│                        HTML/CSS/JS, driven by Office.js. Currently scaffolded
-│                        for Excel first.
-├── browser-extension/  Manifest V3 extension for Gmail + Google Docs.
-│                        Content scripts + popup, HTML/CSS/JS.
-└── website/             Static marketing site (plain HTML/CSS/JS). Just a
-                          landing page + GitHub download link for now — no
-                          backend needed for this piece.
-```
+The extension uses the production Render API URL in
+`browser-extension/background.js`. Running the API locally does not redirect the
+unpacked extension to localhost; avoid live billing unless that is intentional.
+The checked-in Google OAuth client is for unpacked development, not the
+published Chrome Web Store package.
 
+### Microsoft Office add-in
 
-## Local backend quick start
+`office-addin/` contains an **experimental preview**, not a production-ready
+release. Its manifests target Word, Excel, and PowerPoint; Outlook has a
+separate compose manifest. The task pane has text assistance and reviewed Excel
+range edits, but Microsoft-host authentication and behavior have not been
+verified across supported clients. It is not published in AppSource; do not use
+the preview with important or production data.
 
-Gunicorn is a Linux WSGI server, so run the backend inside WSL. The backend
-already exposes the WSGI application as `app:app` and includes Gunicorn in
-`backend/requirements.txt`.
+### Website and backend
 
-### 1. Install WSL (one-time Windows setup)
+- `website/` is the static marketing site, privacy policy, and draft terms.
+- `backend/` is the Flask API. Render serves the Office task pane files from
+  `office-addin/`.
+- Supabase stores account, history, quota, usage, rate-limit, and monthly
+  Gemini-budget records.
+- Gemini is called server-side; provider credentials do not belong in the
+  extension or website.
+- Stripe Checkout and the customer portal handle paid subscriptions. Stripe
+  webhooks update account plans.
 
-Open PowerShell as Administrator:
+## Development setup
+
+### Backend (Windows PowerShell)
+
+From the repository root:
 
 ```powershell
-wsl --install -d Ubuntu
-```
-
-Restart Windows if prompted, then open Ubuntu from the Start menu and create
-your Linux username and password.
-
-### 2. Create the Linux environment
-
-Run these commands in the Ubuntu terminal. This example uses the existing
-Windows checkout; keeping the project under your Linux home directory is
-usually faster for development.
-
-```bash
-cd /mnt/c/Users/lawrenjw/Desktop/ExelidocV4-4/backend
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
+Set-Location backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+python -m pip install pytest
+Copy-Item ..\.env.example .env
 ```
 
-Create or edit `backend/.env` with the required API keys. Do not commit it.
+Fill in development credentials in `backend/.env`; never commit that file. Keep
+`FLASK_ENV=development` and use Stripe test credentials locally. Start the API
+from `backend/`:
 
-### 3. Run with Gunicorn
-
-From the `backend` directory, with the virtual environment active:
-
-```bash
-python -m gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 2 app:app
+```powershell
+python -m flask --app app run --debug --port 5000
 ```
 
-Check it from Windows at <http://127.0.0.1:5000/api/health>. Stop Gunicorn with
-`Ctrl+C`.
+Check `http://127.0.0.1:5000/api/health`. This health endpoint is a liveness
+check; it does not verify Supabase, Gemini, or Stripe connectivity.
 
-For local development with automatic reload, use Flask instead:
+The unpacked extension still points at Render unless its `BACKEND_URL` is
+changed locally in `browser-extension/background.js`. Do not point a development
+extension at production unintentionally.
 
-```bash
-flask --app app run --debug --host 0.0.0.0 --port 5000
-```
+### Browser extension
 
+1. Open `chrome://extensions` (or `edge://extensions`).
+2. Enable **Developer mode**.
+3. Choose **Load unpacked** and select `browser-extension/`.
+4. Configure the development OAuth client and add the resulting extension ID
+   to the backend's allowed `FRONTEND_ORIGINS` when testing against a backend.
 
-### Office Add-in (Excel)
---powershell
+### Office add-in preview
 
+From the repository root:
 
-cd office-addin
+```powershell
+Set-Location office-addin
 npm install
-npm start                         # sideloads into Excel, serves on https://localhost:3000
-
-
-
-
-### Browser Extension
-Chrome/Edge → `chrome://extensions` → Enable Developer Mode → Load Unpacked → select `browser-extension/`
-
-The unpacked extension uses the production Render API, including live Stripe
-Checkout when Render is configured for live mode. Its Stripe mode comes from
-Render, not the local `backend/.env`. Treat checkout links opened from this
-extension as live purchases.
-
-#### Google account access
-
-The extension uses Chrome OAuth for on-demand Gmail, Drive, Docs, Sheets, and
-Slides access. In Google Cloud, enable the Gmail API, Drive API, Google Docs
-API, Google Sheets API, and Google Slides API. Register the published Chrome
-Web Store extension ID on its OAuth client; register the separate unpacked
-extension ID on a development OAuth client. Add test users when the OAuth
-consent screen is in testing. Configure the OAuth consent screen and complete Google's required
-verification before publishing the Gmail, Drive, and spreadsheet permissions.
-The user connects a Google account once in the extension for Gmail, Docs, and
-Sheets access. Searching is initiated only when requested, and source contents
-are sent to Gemini only when the user asks. Matching Gmail messages can be
-selected as context for Docs edits, Sheets edits, and Gmail drafts. The extension also indexes inbox
-messages locally every 5 minutes while Chrome is running (up to 20,000 body
-characters per message); email contents stay in the local Chrome profile and
-are sent to Gemini only after the user asks. Disconnecting Google clears the local index. History
-displays the user's question and stores safe Google source IDs for explicit
-follow-ups; source contents and AI responses are not retained.
-
-Google Docs edits use a reviewed full-text replacement and reject documents
-containing unsupported tables or embedded objects. Users can optionally find
-and include Gmail messages as context before previewing a Docs change. The
-Exelidoc launcher
-appears inside an open Sheet, where users highlight cells, select them for
-Exelidoc, describe the requested change, optionally include matching Gmail
-emails, review the
-proposed cell-by-cell changes, and approve before applying. The initial Google
-setup requests Gmail, Docs, and spreadsheet access together. Existing users see a
-one-time **Finish Google setup** action in the popup to approve the added scopes;
-afterward there is no separate Sheets connection. Formula changes require an
-additional checkbox and confirmation.
-Spreadsheet edits re-read the range before writing and stop if it changed
-after the preview. Neither flow sends email messages; approved edits write
-only to the reviewed document or cells.
-
-The connected-account search flow currently covers Google only. Microsoft
-Graph search across Outlook mail and OneDrive/Office files is not implemented;
-the Office add-in continues to work with the active Office document.
-
-The checked-in manifest currently uses the unpacked development client
-`733957481846-72v784csg244sum7vrthd2j10cdg29am.apps.googleusercontent.com`.
-Before preparing a Web Store package, change it to the published extension's
-client `733957481846-qurs99dqiuu20o48q8f8nifeko2sl3d5.apps.googleusercontent.com`.
-
-
-### Website
-Just open `website/index.html`, or `python -m http.server` from inside `website/`.
-
-
-## Environment variables
-
-
-See `.env.example` at the repo root for the full list (AI provider key, Stripe keys,
-Flask secret key, etc). Copy it to `backend/.env` and fill in real values — never commit
-the real `.env` file (already covered in `.gitignore`).
-
-When `FLASK_ENV=production`, the backend validates its configuration at startup.
-Set a non-default `FLASK_SECRET_KEY`, the Supabase and AI provider credentials,
-`EMAIL_FROM_ADDRESS` and either `RESEND_API_KEY` or SMTP settings, Stripe
-secret/webhook secrets and all active recurring price IDs, and `BILLING_RETURN_URL`
-to the actual HTTPS website page customers should return to from Stripe's billing
-portal. Set `FRONTEND_ORIGINS` to exact allowed origins (the HTTPS website origin and the
-published `chrome-extension://<extension-id>` origin); wildcard origins are
-rejected. If using the unpacked extension against Render, temporarily include
-its generated `chrome-extension://<unpacked-id>` origin as well.
-
-For transactional email, Resend's HTTPS API is recommended on Render Free;
-Render Free web services block outbound SMTP ports 25, 465, and 587. Verify
-your sending domain with Resend before setting `RESEND_API_KEY` in the backend
-host's environment. When `RESEND_API_KEY` is set, the backend uses Resend;
-otherwise it falls back to the configured SMTP transport.
-Set `API_PUBLIC_URL` to the backend's public HTTPS origin (the Render service
-URL), because email verification and password-reset links must reach the API.
-`APP_PUBLIC_URL` is the website origin used for checkout redirects, not email
-action links.
-
-AI requests call Google's Gemini Developer API directly using `GEMINI_API_KEY`
-and `GEMINI_MODEL` (default `gemini-4-hydrogen`). The backend enforces a shared
-$10 USD calendar-month spend ceiling using Supabase; run
-`backend/supabase/migration_ai_monthly_budget.sql` before deploying this version.
-The cap applies to requests through this backend only. Keep the Gemini key
-restricted to the Gemini API and do not reuse it elsewhere.
-
-Exelidoc history displays the user's question and stores validated source
-references; it never stores source content or AI responses. Before deploying
-that behavior, run `backend/supabase/migration_history_metadata_only.sql` and
-then `backend/supabase/migration_history_questions_and_refs.sql` in Supabase.
-The first migration clears previously saved prompts/responses; the second
-allows capped user questions and structured Google source references while
-continuing to enforce empty AI responses.
-
-### Stripe paid plans
-
-Set `STRIPE_MODE=test` or `STRIPE_MODE=live` and provide credentials with the
-matching `STRIPE_TEST_*` or `STRIPE_LIVE_*` names. Production startup rejects
-test mode or a test secret key. Existing deployments can keep using generic
-`STRIPE_*` variables in live mode; `STRIPE_LIVE_*` values take precedence when
-present. Create active recurring prices for Monthly, Pro, and Enterprise in the selected
-Stripe mode. Their `price_...` IDs are not Product IDs (`prod_...`). Configure a Stripe webhook pointing to
-`https://exelidocv4-5.onrender.com/api/stripe/webhook` for
-`checkout.session.completed`, `customer.subscription.updated`, and
-`customer.subscription.deleted`, then set its signing secret as
-`STRIPE_TEST_WEBHOOK_SECRET` or `STRIPE_LIVE_WEBHOOK_SECRET` for the selected
-mode. Existing live deployments may continue using `STRIPE_WEBHOOK_SECRET`.
-Checkout can succeed without the webhook, but paid access will not be recorded
-in Exelidoc until the webhook is delivered.
-
-Daily AI request limits use a rolling 24-hour window: 5 for Free, 10 for Monthly,
-20 for Pro, and 50 for Enterprise. Apply `backend/supabase/migration_daily_request_limits.sql`
-once when deploying the change to reset existing accounts into a fresh window.
-
-Before enabling email verification and password recovery, apply these SQL
-migrations once in the Supabase SQL Editor, in order:
-
-1. `backend/supabase/migration_add_session_token.sql`
-2. `backend/supabase/migration_add_password_auth.sql`
-3. `backend/supabase/migration_add_email_verification.sql`
-4. `backend/supabase/migration_customer_account_controls.sql`
-
-They add the account/session fields, pending signups, and password-reset
-functions used by the login and recovery routes.
-Enable Stripe's Customer Portal in the Stripe dashboard and configure its
-allowed cancellation and plan-management behavior before enabling customer
-billing controls. The extension requires active subscriptions to be canceled
-and confirmed as ended before it allows account deletion.
-
-The website's `terms.html` and `privacy.html` are working customer-information
-drafts, not approved commercial legal documents. Replace repository issue links
-with a monitored customer support contact, establish retention and refund
-policies, and have qualified counsel review the final disclosures before launch.
-
-### Focused tests
-
-From the repository root, run the backend suite with:
-
-```powershell
-python -m pytest backend\tests
+npm start
 ```
 
-Install `pytest` in the active development environment if it is not already
-available. Run the extension service-worker tests with:
+The `start:excel`, `start:word`, `start:powerpoint`, and `start:outlook` scripts
+are also available. Sideloading and client-specific authentication are not
+certified production workflows.
+
+## Google OAuth verification and Chrome Web Store release
+
+The manifest requests these exact Google OAuth scopes:
+
+| Scope | Google classification | What it allows |
+| --- | --- | --- |
+| `https://www.googleapis.com/auth/gmail.readonly` | Restricted | Read Gmail messages, including inbox, sent mail, and drafts; no Gmail send/modify scope is requested. |
+| `https://www.googleapis.com/auth/drive.readonly` | Restricted | View and download Drive files; this is broad access used to search Docs, Sheets, and Slides. |
+| `https://www.googleapis.com/auth/documents` | Sensitive | Read and edit Google Docs. |
+| `https://www.googleapis.com/auth/spreadsheets.readonly` | Sensitive | Read Google Sheets. |
+| `https://www.googleapis.com/auth/spreadsheets` | Sensitive | Read and edit Google Sheets. |
+
+Before submitting:
+
+1. In Google Cloud Console, enable Gmail, Drive, Docs, Sheets, and Slides APIs.
+2. Verify the public Exelidoc domain. Make the homepage and privacy policy
+   accessible without sign-in, and use matching links on the OAuth consent
+   screen and site.
+3. Set the OAuth app to **External** and provide accurate app name, logo,
+   support/developer contacts, authorized domain, and data-use disclosures.
+4. Submit a justification for every requested scope. Explain why narrower
+   scopes do not support inbox indexing and cross-file search. Do not claim
+   Gmail sending: the extension uses read-only Gmail access and edits an open
+   draft only after approval.
+5. Record a reviewer demo showing the complete consent flow and each scope's
+   user-facing feature. Keep the consent screen and feature behavior consistent.
+6. Submit the Gmail and Drive restricted scopes for Google's restricted-scope
+   verification. Because source content can be transmitted to the backend and
+   Gemini after a user request, Google may require a third-party security
+   assessment. Follow the current requirements shown in Cloud Console.
+7. Separately complete Chrome Web Store listing, user-data, privacy, and
+   single-purpose disclosures. Google OAuth verification and Web Store review
+   are separate processes.
+8. Replace the unpacked OAuth client ID in `browser-extension/manifest.json`
+   with the published extension's client before packaging. Re-check the
+   published extension ID in `FRONTEND_ORIGINS` and OAuth configuration.
+
+Official references:
+
+- [Gmail API scopes](https://developers.google.com/workspace/gmail/api/auth/scopes)
+- [Drive API authorization](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)
+- [Docs API scopes](https://developers.google.com/workspace/docs/api/auth)
+- [Sheets API scopes](https://developers.google.com/workspace/sheets/api/scopes)
+- [Google OAuth verification requirements](https://support.google.com/cloud/answer/13464321)
+- [Google OAuth verification overview](https://support.google.com/cloud/answer/13463073)
+
+## Supabase setup and migrations
+
+Back up the database before applying migrations. For a new project, run
+`backend/supabase/schema.sql` first, then the remaining migrations below in
+order. For an existing project, check which migrations have already been
+applied; do not rerun `migration_daily_request_limits.sql`, because it resets
+every account's current 24-hour quota window.
+
+1. `migration_add_tiers.sql`
+2. `migration_add_session_token.sql`
+3. `migration_add_password_auth.sql`
+4. `migration_add_email_verification.sql`
+5. `migration_customer_account_controls.sql`
+6. `migration_add_history.sql`
+7. `migration_history_metadata_only.sql`
+8. `migration_history_questions_and_refs.sql`
+9. `migration_daily_request_limits.sql`
+10. `migration_ai_monthly_budget.sql`
+11. `migration_ai_monthly_budget_alerts.sql`
+12. `migration_api_rate_limits.sql`
+
+`migration_history_metadata_only.sql` clears previously stored history prompts
+and AI responses before enforcing metadata-only history. Review that data change
+before applying it. For the current existing production database, the two new
+operational migrations are `migration_ai_monthly_budget_alerts.sql` and
+`migration_api_rate_limits.sql`, provided the base budget and account/history
+migrations are already present.
+
+The backend uses the Supabase **service-role** key server-side. Never place it
+in the extension or website. The SQL enables row-level security and restricts
+direct access to internal service tables.
+
+## Backend configuration and production deployment
+
+`.env.example` lists the backend settings. Important values:
+
+- `FLASK_SECRET_KEY`: long, random, unique server secret.
+- `FLASK_ENV=production`: enables strict startup validation and distributed
+  authentication rate limits.
+- `TRUSTED_PROXY_HOPS`: set to the number of trusted reverse proxies in front
+  of the service. For a standard single Render ingress, set `1`; verify this
+  if you add another proxy. Do not trust arbitrary client-supplied forwarding
+  headers.
+- `FRONTEND_ORIGINS`: exact HTTPS website and published Chrome extension
+  origins; no wildcard.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`.
+- `GEMINI_API_KEY` and `GEMINI_MODEL`.
+- `SENTRY_DSN`: required in production for error and spend alerts. Configure a
+  Sentry Python/Flask project and alert rules before deploying.
+- `API_PUBLIC_URL`, `APP_PUBLIC_URL`, and `BILLING_RETURN_URL`.
+- Transactional email: `EMAIL_FROM_ADDRESS` and either `RESEND_API_KEY` or SMTP
+  settings. Resend's HTTPS API is recommended on Render Free; outbound SMTP
+  ports are restricted on that plan.
+- `STRIPE_MODE=live` and matching `STRIPE_LIVE_*` credentials and recurring
+  price IDs. Production rejects Stripe test mode.
+
+For a Render service rooted at `backend/`, use `pip install -r requirements.txt`
+as the build command and `gunicorn app:app` as the start command. Set all
+production environment variables in Render's environment settings, not in the
+repository. Configure the Stripe webhook at
+`https://exelidocv4-5.onrender.com/api/stripe/webhook` for:
+`checkout.session.completed`, `customer.subscription.updated`, and
+`customer.subscription.deleted`.
+
+The backend enforces:
+
+- A shared $10 USD UTC-month Gemini spend ceiling, with a one-time Sentry
+  warning at 80% and an alert when a request is blocked by the ceiling.
+- Per-account AI request limits per rolling 24-hour period: Free 5, Monthly 10,
+  Pro 20, Enterprise 50.
+- Shared Supabase-backed authentication limits: signup 10/IP/hour and
+  3/email/hour; login 30/IP/15 minutes and 10/email/15 minutes; password-reset
+  request 10/IP/hour and 3/email/hour; verification and reset completion are
+  also limited by IP and one-time token.
+- Fail-closed auth throttling: if the rate-limit table/RPC is unavailable,
+  unauthenticated auth endpoints return `503`, not an unthrottled success.
+- Stripe webhook signature validation; processing failures are logged and
+  return `500` so Stripe can retry.
+
+Sentry events are scrubbed before transmission: request details, user identity,
+breadcrumbs, extra fields, local variables, and exception messages are removed.
+Only static monthly-budget alert names are retained as messages. Configure Sentry issue
+notifications for new backend errors and the two AI-budget alert names. Sentry
+event retention and notification recipients are managed in its dashboard.
+
+## Data handling and customer disclosures
+
+- The local Gmail index stays in the browser until Google is disconnected in
+  Exelidoc or browser data/extension storage is removed. Account deletion alone
+  does not clear that local index.
+- History stores the user's question and safe source references; it does not
+  store source text or AI responses. Users can clear history or delete their
+  account. History has no automatic expiry.
+- Email verification links expire after 24 hours; password-reset links expire
+  after 30 minutes. Tokens are stored as hashes and carried in URL fragments,
+  not sent in the initial page request.
+- The monthly AI-budget table stores aggregate month totals without a user ID.
+- Submitted text is sent to Gemini to fulfill the explicit user request.
+  Provider and hosting logs/backups are controlled by their respective terms
+  and settings; do not promise immediate deletion from those systems.
+- `website/privacy.html` describes current behavior. `website/terms.html` is
+  still a draft, and the support link is currently the project issue page.
+  Replace it with a monitored customer-support contact and get qualified legal
+  review before broad commercial launch.
+
+## Backups, alerts, and rollback
+
+These are account-level operations and are not enabled by repository code:
+
+1. In Supabase, confirm the project's backup/PITR plan and retention window.
+   Take a backup before each production migration and periodically test a
+   restore into a separate project.
+2. In Sentry, configure email/notification rules for new backend errors and
+   the AI-budget warning/cap events. Verify delivery with a test event before
+   release.
+3. In Stripe, monitor webhook delivery and failed event retries in the Stripe
+   Dashboard. A processing failure returns `500` and Stripe retries.
+4. For a bad application deploy, use Render's **Deploys** page to roll back to
+   the last known-good deployment. Then run the health check and smoke-test
+   sign-in, AI, and Stripe webhook handling.
+5. Application rollback does not undo a database migration. Review migration
+   compatibility before release; restore the database from a tested backup
+   only when necessary and follow Supabase's restore procedure.
+
+`/api/health` checks that the Flask process responds; it is not a dependency
+readiness check. Use Sentry and provider dashboards to diagnose database,
+Gemini, Stripe, and email-provider failures.
+
+## Tests
+
+From the repository root:
 
 ```powershell
+Set-Location backend
+python -m pytest tests
+Set-Location ..
 node --test browser-extension\tests\*.test.js
 ```
 
+Validate the Office manifests from `office-addin/`:
 
-## Status
-
-
-- [x] Project structure scaffolded
-- [ ] Backend `/api/analyze` endpoint (real AI logic)
-- [ ] Stripe subscription flow
-- [ ] Excel task pane wired to backend
-- [ ] Browser extension content scripts (Gmail, Google Docs)
-- [ ] Marketing site content + design pass
-
-
-### To stop server
-npm stop
+```powershell
+Set-Location office-addin
+npm run validate
+npm run validate:outlook
+```

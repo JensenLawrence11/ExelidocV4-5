@@ -408,6 +408,14 @@
   transition: transform 140ms ease, box-shadow 140ms ease;
 }
 
+.exelidoc-docs-launcher.exelidoc-sheet-launcher {
+  bottom: 54px;
+}
+
+.exelidoc-panel.docs-mode.exelidoc-sheet-panel {
+  bottom: 112px;
+}
+
 .exelidoc-docs-launcher:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 26px rgba(40, 59, 175, 0.38);

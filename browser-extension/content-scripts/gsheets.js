@@ -63,7 +63,7 @@ function ensureSheetLauncher() {
   if (sheetLauncher) return;
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "exelidoc-docs-launcher";
+  button.className = "exelidoc-docs-launcher exelidoc-sheet-launcher";
   button.innerHTML = `<img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" /><span>Exelidoc</span>`;
   button.setAttribute("aria-label", "Open Exelidoc Sheets panel");
   button.setAttribute("aria-expanded", "false");
@@ -89,7 +89,7 @@ function ensureSheetLauncher() {
 
 function createSheetPanel() {
   const panel = document.createElement("section");
-  panel.className = "exelidoc-panel docs-mode";
+  panel.className = "exelidoc-panel docs-mode exelidoc-sheet-panel";
   panel.innerHTML = `
     <div class="exelidoc-panel-header"><span class="exelidoc-brand"><img class="exelidoc-mark" src="${EXELIDOC_LOGO_URL}" alt="" />Exelidoc <span class="exelidoc-product-label">Sheets</span></span><button class="exelidoc-close" type="button" aria-label="Close Exelidoc panel">&times;</button></div>
     <div class="exelidoc-docs-note">Highlight cells in the sheet, then choose them for Exelidoc. Describe what to make or change. Nothing is written until you review and apply the preview.</div>

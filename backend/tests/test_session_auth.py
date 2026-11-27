@@ -100,6 +100,19 @@ def test_verification_creates_account_and_sends_welcome_email():
     send_welcome.assert_called_once_with("user@example.com")
 
 
+def test_verification_page_is_not_cached_and_accepts_fragment_token():
+    app = create_app()
+
+    with app.test_client() as client:
+        response = client.get("/api/auth/verify-email")
+
+    assert response.status_code == 200
+    assert b"location.hash.slice(1)" in response.data
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
 def test_password_hash_verifies_without_storing_plaintext():
     stored_hash = hash_password("correct horse battery")
 

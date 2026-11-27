@@ -18,9 +18,9 @@ def test_account_emails_link_to_api_url_not_website_url():
     verification_body = send_email.call_args_list[0].args[2]
     reset_text_body = send_email.call_args_list[1].args[2]
     reset_html_body = send_email.call_args_list[1].args[3]
-    assert "https://api.example.com/api/auth/verify-email?token=verification-token" in verification_body
-    assert "https://api.example.com/api/auth/reset-password?token=reset-token" in reset_text_body
-    assert "https://api.example.com/api/auth/reset-password?token=reset-token" in reset_html_body
+    assert "https://api.example.com/api/auth/verify-email#token=verification-token" in verification_body
+    assert "https://api.example.com/api/auth/reset-password#token=reset-token" in reset_text_body
+    assert "https://api.example.com/api/auth/reset-password#token=reset-token" in reset_html_body
     assert "website.example.com/api/auth" not in verification_body + reset_text_body + reset_html_body
 
 

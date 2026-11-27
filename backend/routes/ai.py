@@ -3,6 +3,8 @@ Endpoints the Office add-in and browser extension both call to get AI
 suggestions. Both frontends send plain JSON plus an X-Api-Key header and
 never touch the AI provider directly -- the API key stays server-side.
 """
+import logging
+
 from flask import Blueprint, request, jsonify, g
 
 from services.ai_service import (
@@ -15,6 +17,7 @@ from services.ai_service import (
 )
 from services.history_service import save_conversation
 from services.user_service import log_ai_usage
+from services.monitoring_service import capture_exception
 from utils.auth_decorator import require_subscription
 
 ai_bp = Blueprint("ai", __name__)
@@ -32,8 +35,13 @@ def _save_history(action):
             data.get("prompt") if isinstance(data.get("prompt"), str) else data.get("instruction"),
             data.get("source_refs"),
         )
-    except Exception as e:
-        print(f"{action}: save_conversation failed -- {e}")
+    except Exception as error:
+        logging.error(
+            "history_save_failed action=%s exception_type=%s",
+            action,
+            type(error).__name__,
+        )
+        capture_exception(error)
 
 
 def _get_request_context(data):
@@ -86,8 +94,9 @@ def generate_text_route():
     _save_history("generate-text")
     try:
         log_ai_usage(g.user["id"], "generate-text")
-    except Exception as e:
-        print(f"generate_text_route: log_ai_usage failed -- {e}")
+    except Exception as error:
+        logging.error("ai_usage_log_failed action=generate-text exception_type=%s", type(error).__name__)
+        capture_exception(error)
     result["remaining_requests"] = g.remaining_requests
     result["tier"] = g.user.get("tier")
     return jsonify(result)
@@ -125,8 +134,9 @@ def analyze_text_route():
     _save_history("analyze-text")
     try:
         log_ai_usage(g.user["id"], "analyze-text")
-    except Exception as e:
-        print(f"analyze_text_route: log_ai_usage failed -- {e}")
+    except Exception as error:
+        logging.error("ai_usage_log_failed action=analyze-text exception_type=%s", type(error).__name__)
+        capture_exception(error)
     result["remaining_requests"] = g.remaining_requests
     result["tier"] = g.user.get("tier")
     return jsonify(result)
@@ -163,8 +173,9 @@ def analyze_range_route():
     _save_history("analyze-range")
     try:
         log_ai_usage(g.user["id"], "analyze-range")
-    except Exception as e:
-        print(f"analyze_range_route: log_ai_usage failed -- {e}")
+    except Exception as error:
+        logging.error("ai_usage_log_failed action=analyze-range exception_type=%s", type(error).__name__)
+        capture_exception(error)
     result["remaining_requests"] = g.remaining_requests
     result["tier"] = g.user.get("tier")
     return jsonify(result)
@@ -209,8 +220,9 @@ def edit_range_route():
     _save_history("edit-range")
     try:
         log_ai_usage(g.user["id"], "edit-range")
-    except Exception as e:
-        print(f"edit_range_route: log_ai_usage failed -- {e}")
+    except Exception as error:
+        logging.error("ai_usage_log_failed action=edit-range exception_type=%s", type(error).__name__)
+        capture_exception(error)
     result["remaining_requests"] = g.remaining_requests
     result["tier"] = g.user.get("tier")
     return jsonify(result)
